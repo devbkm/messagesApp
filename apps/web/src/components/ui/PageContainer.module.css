@@ -1,0 +1,28 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xl);
+}
+
+.back {
+  /* Align the ghost button's text, not its padding, with the page title. */
+  margin: 0 0 calc(-1 * var(--space-md)) calc(-1 * var(--space-md));
+}
+
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+}
+
+.title {
+  font: var(--text-title);
+  min-width: 0;
+}
+
+.actions {
+  display: flex;
+  gap: var(--space-sm);
+}
