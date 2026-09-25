@@ -1,17 +1,75 @@
-import { ButtonLink, EmptyState, PageContainer } from '../components/ui'
+import { useParams } from 'react-router-dom'
 
-// Placeholder: loading and displaying a message is implemented in a later phase.
+import type { Attachment } from '../api/types'
+import { ButtonLink, ErrorState, LoadingState, PageContainer } from '../components/ui'
+import { useMessage } from '../hooks/useMessages'
+import { describeError, isNotFound } from '../utils/errors'
+import { formatDateTime, formatFileSize } from '../utils/format'
+import styles from './MessageDetailPage.module.css'
+
+const backLink = (
+  <ButtonLink to="/" variant="ghost">
+    ← Back to inbox
+  </ButtonLink>
+)
+
 export function MessageDetailPage() {
+  const { messageId = '' } = useParams()
+  const { data: message, isPending, isError, error, refetch, isFetching } = useMessage(messageId)
+
+  if (isPending) {
+    return (
+      <PageContainer title="Message" backLink={backLink}>
+        <LoadingState label="Loading message…" />
+      </PageContainer>
+    )
+  }
+
+  if (isError) {
+    return isNotFound(error) ? (
+      <PageContainer title="Message not found" backLink={backLink}>
+        <ErrorState
+          title="This message doesn't exist"
+          message="It may have been deleted. Go back to your inbox to see your current messages."
+          action={<ButtonLink to="/">Back to inbox</ButtonLink>}
+        />
+      </PageContainer>
+    ) : (
+      <PageContainer title="Message" backLink={backLink}>
+        <ErrorState
+          title="Couldn't load this message"
+          message={describeError(error)}
+          onRetry={() => void refetch()}
+          retrying={isFetching}
+        />
+      </PageContainer>
+    )
+  }
+
   return (
     <PageContainer
-      title="Message"
-      backLink={
-        <ButtonLink to="/" variant="ghost">
-          ← Back to inbox
-        </ButtonLink>
-      }
+      title={message.subject}
+      backLink={backLink}
+      subtitle={<time dateTime={message.created_at}>{formatDateTime(message.created_at)}</time>}
     >
-      <EmptyState title="Message details" message="The subject, date and text of a message will appear here." />
+      <article className={styles.article}>
+        <p className={styles.body}>{message.text}</p>
+        {message.attachment ? <AttachmentCard attachment={message.attachment} /> : null}
+      </article>
     </PageContainer>
+  )
+}
+
+function AttachmentCard({ attachment }: { attachment: Attachment }) {
+  return (
+    <section className={styles.attachment} aria-labelledby="attachment-heading">
+      <h2 id="attachment-heading" className={styles.attachmentHeading}>
+        Attachment
+      </h2>
+      <p className={styles.attachmentName}>{attachment.filename}</p>
+      <p className={styles.attachmentMeta}>
+        {attachment.content_type} · {formatFileSize(attachment.size_bytes)}
+      </p>
+    </section>
   )
 }

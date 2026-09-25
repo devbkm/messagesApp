@@ -1,4 +1,4 @@
-import { createBrowserRouter } from 'react-router-dom'
+import { createBrowserRouter, type RouteObject } from 'react-router-dom'
 
 import { AppLayout } from './layouts/AppLayout'
 import { CreateMessagePage } from './pages/CreateMessagePage'
@@ -7,7 +7,7 @@ import { MessageDetailPage } from './pages/MessageDetailPage'
 import { NotFoundPage } from './pages/NotFoundPage'
 
 /** Routes mirror the mobile stack: Inbox → Message detail, Inbox → Create message. */
-export const router = createBrowserRouter([
+export const routes: RouteObject[] = [
   {
     element: <AppLayout />,
     children: [
@@ -17,4 +17,6 @@ export const router = createBrowserRouter([
       { path: '*', element: <NotFoundPage /> },
     ],
   },
-])
+]
+
+export const createRouter = () => createBrowserRouter(routes)

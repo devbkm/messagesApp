@@ -1,4 +1,4 @@
-import { useId, type InputHTMLAttributes, type TextareaHTMLAttributes } from 'react'
+import { useId, type ComponentPropsWithRef } from 'react'
 
 import styles from './TextField.module.css'
 
@@ -7,12 +7,15 @@ type SharedProps = {
   /** Guidance shown below the field while there is no error. */
   hint?: string
   error?: string
-  /** Shows a "used / max" counter when `maxLength` is set. */
-  showCount?: boolean
+  /**
+   * Shows "count/limit". Unlike `maxLength` it does not truncate input, so pasted
+   * text is never silently cut off; the form explains the problem instead.
+   */
+  counter?: { count: number; limit: number }
 }
 
-type InputFieldProps = SharedProps & { multiline?: false } & InputHTMLAttributes<HTMLInputElement>
-type TextareaFieldProps = SharedProps & { multiline: true } & TextareaHTMLAttributes<HTMLTextAreaElement>
+type InputFieldProps = SharedProps & { multiline?: false } & ComponentPropsWithRef<'input'>
+type TextareaFieldProps = SharedProps & { multiline: true } & ComponentPropsWithRef<'textarea'>
 
 /**
  * Labelled input or textarea. The label is always visible and programmatically
@@ -20,18 +23,19 @@ type TextareaFieldProps = SharedProps & { multiline: true } & TextareaHTMLAttrib
  * conveyed with text as well as colour.
  */
 export function TextField(props: InputFieldProps | TextareaFieldProps) {
-  const { label, hint, error, showCount = false, id, required, maxLength, value } = props
+  const { label, hint, error, counter, id, required } = props
   const generatedId = useId()
   const fieldId = id ?? generatedId
   const messageId = `${fieldId}-message`
   const countId = `${fieldId}-count`
-  const length = typeof value === 'string' ? value.length : 0
-  const hasCount = showCount && typeof maxLength === 'number'
-  const describedBy = [error || hint ? messageId : null, hasCount ? countId : null].filter(Boolean).join(' ')
+  const overLimit = counter ? counter.count > counter.limit : false
+  const describedBy = [error || hint ? messageId : null, counter ? countId : null].filter(Boolean).join(' ')
 
   const fieldProps = {
     id: fieldId,
-    className: `${styles.input} ${error ? styles.invalid : ''}`,
+    className: [styles.input, props.multiline ? styles.textarea : null, error ? styles.invalid : null]
+      .filter(Boolean)
+      .join(' '),
     'aria-invalid': error ? true : undefined,
     'aria-describedby': describedBy || undefined,
   }
@@ -40,10 +44,15 @@ export function TextField(props: InputFieldProps | TextareaFieldProps) {
     <div className={styles.field}>
       <label htmlFor={fieldId} className={styles.label}>
         {label}
-        {required ? <span className={styles.required}> (required)</span> : null}
+        {required ? (
+          <>
+            {' '}
+            <span className={styles.required}>(required)</span>
+          </>
+        ) : null}
       </label>
       {props.multiline ? (
-        <textarea {...stripShared(props)} {...fieldProps} className={`${fieldProps.className} ${styles.textarea}`} />
+        <textarea {...stripShared(props)} {...fieldProps} />
       ) : (
         <input {...stripShared(props)} {...fieldProps} />
       )}
@@ -51,17 +60,15 @@ export function TextField(props: InputFieldProps | TextareaFieldProps) {
         <p id={messageId} className={error ? styles.error : styles.hint}>
           {error ? (
             <>
-              <span className="visually-hidden">Error: </span>
-              {error}
+              <strong>Error:</strong> {error}
             </>
           ) : (
             hint
           )}
         </p>
-        {hasCount ? (
-          <p id={countId} className={length >= maxLength ? styles.countLimit : styles.count} aria-live="polite">
-            {length}/{maxLength}
-            <span className="visually-hidden"> characters used</span>
+        {counter ? (
+          <p id={countId} className={overLimit ? styles.countLimit : styles.count}>
+            {counter.count}/{counter.limit} <span className="visually-hidden">characters used</span>
           </p>
         ) : null}
       </div>
@@ -70,6 +77,6 @@ export function TextField(props: InputFieldProps | TextareaFieldProps) {
 }
 
 function stripShared<T extends SharedProps & { multiline?: boolean }>(props: T) {
-  const { label, hint, error, showCount, multiline, ...rest } = props
+  const { label, hint, error, counter, multiline, ...rest } = props
   return rest
 }

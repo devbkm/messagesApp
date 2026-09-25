@@ -13,9 +13,9 @@ It is built as a practical exercise and consists of:
 Both clients talk to the same versioned REST API (`/api/v1/...`). The backend is the
 single source of truth for ownership, validation, creation dates and deletion.
 
-> **Project status:** Phase 4 — mobile app. The backend (database + REST API) and the
-> React Native app (inbox, message detail, create message) are complete. The web client
-> still shows placeholder pages and is connected in a later phase (see [Roadmap](#roadmap)).
+> **Project status:** Phase 5 — web client. The backend (database + REST API), the React
+> Native app and the optional React web app are complete and use the same API (see
+> [Roadmap](#roadmap)).
 
 ---
 
@@ -90,10 +90,15 @@ messagesApp/
 │   │       └── __tests__/      # Jest + React Native Testing Library
 │   └── web/                    # React web app (optional client)
 │       └── src/
+│           ├── api/            # HTTP client, endpoint functions, wire types, query client
 │           ├── components/ui/  # Design-system components (CSS Modules)
+│           ├── hooks/          # TanStack Query hooks (list, detail, create, delete)
+│           ├── identity/       # Per-browser user id (sent as X-User-Id)
 │           ├── layouts/        # App shell (skip link, header, main)
-│           ├── pages/          # Inbox, MessageDetail, CreateMessage, NotFound
+│           ├── pages/          # Inbox, MessageDetail, CreateMessage, NotFound (+ tests)
 │           ├── styles/         # Tokens + global styles
+│           ├── utils/          # Date formatting, validation, error messages
+│           ├── test/           # Vitest setup and render helper
 │           └── router.tsx      # Routes
 ├── backend/
 │   ├── alembic/                # Migrations (versions/) and environment
@@ -181,7 +186,8 @@ cp .env.example .env.local
 npm run dev
 ```
 
-Open <http://localhost:5173>.
+Open <http://localhost:5173>. The backend's `CORS_ORIGINS` (in `backend/.env`) must
+include this origin; `.env.example` already does.
 
 ### Environment variables
 
@@ -208,7 +214,7 @@ Only `.env.example` files are committed. Client-side variables (`EXPO_PUBLIC_*`,
 | Backend tests | `pytest` (needs the database container running) |
 | Migrations match models | `alembic check` |
 | Mobile tests / types / lint | `npm test` · `npm run typecheck` · `npm run lint` |
-| Web types / lint / build | `npm run typecheck` · `npm run lint` · `npm run build` |
+| Web tests / types / lint / build | `npm test` · `npm run typecheck` · `npm run lint` · `npm run build` |
 
 ---
 
@@ -272,6 +278,9 @@ Messages belong to a user, and the backend alone decides who that is:
   stores it on the device (AsyncStorage) and sends it with every request. The same
   inbox is therefore shown across restarts; reinstalling the app starts a new, empty
   inbox. With real authentication, `src/identity/userId.ts` would return a token instead.
+- **Web client:** the same approach, stored in `localStorage` (`crypto.randomUUID()`).
+  The browser and the phone are therefore different users unless they share an id,
+  which is the expected consequence of having no sign-in.
 
 ---
 
@@ -448,6 +457,75 @@ cover:
 
 ---
 
+## Web app
+
+The optional React web client (Vite, React Router, TanStack Query) talks to the same
+`/api/v1` endpoints as the mobile app. It has no business logic of its own: ownership,
+timestamps and validation all come from the API. The client-side checks only mirror
+the API's limits to give instant feedback.
+
+| Route | Page |
+| --- | --- |
+| `/` | **Inbox**: messages newest first. Each row is one link showing the **subject** (wraps to two lines) and the **date/time** as a `<time>` element, with a separate **Delete** button. "New message" sits next to the page heading. |
+| `/messages/:id` | **Message detail**: a separate page with the subject as the `<h1>`, the date/time below it, then the full text (line breaks kept, long words wrap) and the attachment, if any. |
+| `/messages/new` | **Create message**: labelled subject and message fields with a live counter, inline errors and Cancel / Create message buttons. |
+| anything else | **Not found** page with a link back to the inbox. |
+
+**Shared with mobile:** the same API client behaviour (error envelope → `ApiError`,
+15-second timeout, user id header), the same query hooks and cache updates, the same
+validation rules and messages, the same `dd.mm.YYYY, HH:mm` formatting and the same
+design tokens. The code is duplicated rather than shared as a package, so each app
+builds on its own with no monorepo tooling (see [Architecture](#architecture)).
+
+**States and recovery:**
+- skeleton while loading;
+- friendly empty state with "Write your first message";
+- error state with **Try again**;
+- a banner if a background refresh fails;
+- "Message not found" with a way back.
+
+Create keeps the form and its content on failure and shows the reason, and server field
+errors appear inline. Delete keeps the message and changes the button to **Try again**.
+While a request runs, the relevant buttons are disabled and marked `aria-busy`, and
+repeated clicks or Enter presses are ignored.
+
+**Deliberate destructive actions:** delete always goes through a confirmation dialog
+that names the message. Leaving the create page with a draft, by link or back button,
+asks "Discard this message?". Closing or reloading the tab shows the browser's own
+"leave site?" prompt.
+
+**Responsive:** a single-column layout capped at 720 px, with 16 px side margins (24 px
+from 768 px up). Form buttons stack full-width below 480 px. Long subjects are clamped
+to two lines in the list and wrap fully on the detail page, and unbroken words wrap
+anywhere. I checked it at 1280, 768, 375 and 320 px: no horizontal scrolling on any
+page.
+
+**Accessibility (web):**
+- Headings follow a clear hierarchy: `h1` per page, `h2` for sections and dialogs.
+- There is a skip link, and focus moves to the page heading on every navigation; the
+  document title names the page.
+- Everything works from the keyboard, and `:focus-visible` rings are shown on all controls.
+- Dialogs use the native `<dialog>`, which traps focus and closes with Escape.
+- Focus starts on the safe choice (Cancel). When a dialog closes, focus returns to the
+  button that opened it, or to the page heading if that row was deleted.
+- Each delete button is named "Delete message: subject".
+- Fields have `<label>`s. Hints, counters and errors are linked with
+  `aria-describedby`, and invalid fields set `aria-invalid`.
+- Errors begin with a visible "Error:", and success is announced through a status region.
+
+**Tests** (`npm test`, Vitest + Testing Library, 33 tests) render the real routes with
+the API module mocked. They cover:
+- the inbox, its loading, empty and error states, and retry;
+- keyboard order and the skip link;
+- delete: confirmation, cancel, busy state, a single request, success with focus
+  handling, and failure with retry;
+- the detail page's content, attachment, not-found and retry states;
+- form validation, the no-truncation counter, create success and failure,
+  server field errors, and the discard-draft guard;
+- the API client and the helpers.
+
+---
+
 ## Design system
 
 Both clients implement the same small set of building blocks:
@@ -496,5 +574,5 @@ Guidelines:
 2. **Database** — models, migrations, integrity rules, current-user seam ✅
 3. **REST API** — messages endpoints, user scoping, validation, errors, OpenAPI ✅
 4. **Mobile app** — inbox, detail and create screens on the real API, with tests ✅
-5. Web: the same features on the shared API
+5. **Web client** — the same features on the shared API, responsive and keyboard accessible ✅
 6. Final documentation: decisions and trade-offs

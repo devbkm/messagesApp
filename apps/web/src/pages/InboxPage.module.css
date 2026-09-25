@@ -1,0 +1,40 @@
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.listHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.count {
+  font: var(--text-caption);
+  color: var(--color-text-muted);
+}
+
+.refreshError {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-md);
+}
+
+.refreshError > :first-child {
+  flex: 1 1 16rem;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  margin: 0;
+  padding: 0;
+}
+
+/* Two classes so this wins over the ghost variant regardless of stylesheet order. */
+.list .deleteButton {
+  color: var(--color-danger);
+}

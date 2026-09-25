@@ -1,0 +1,37 @@
+.article {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xl);
+  padding-top: var(--space-xl);
+  border-top: 1px solid var(--color-border);
+}
+
+.body {
+  /* Keep the author's line breaks; long words still wrap (see global overflow-wrap). */
+  white-space: pre-wrap;
+  line-height: 1.65;
+  max-width: 68ch;
+}
+
+.attachment {
+  display: grid;
+  gap: var(--space-xxs);
+  padding: var(--space-lg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+
+.attachmentHeading {
+  font: var(--text-label);
+  color: var(--color-text-muted);
+}
+
+.attachmentName {
+  font: var(--text-subheading);
+}
+
+.attachmentMeta {
+  font: var(--text-caption);
+  color: var(--color-text-muted);
+}

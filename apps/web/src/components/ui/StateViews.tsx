@@ -19,21 +19,30 @@ type ErrorStateProps = {
   message: string
   onRetry?: () => void
   retrying?: boolean
+  /** Replaces the retry button when retrying cannot help (e.g. "not found"). */
+  action?: ReactNode
 }
 
 /** Error with a plain-language explanation and an optional retry action. */
-export function ErrorState({ title = 'Something went wrong', message, onRetry, retrying = false }: ErrorStateProps) {
+export function ErrorState({
+  title = 'Something went wrong',
+  message,
+  onRetry,
+  retrying = false,
+  action,
+}: ErrorStateProps) {
   return (
     <div className={styles.centered}>
       <div role="alert" className={styles.text}>
         <h2 className={styles.heading}>{title}</h2>
         <p className={styles.muted}>{message}</p>
       </div>
-      {onRetry ? (
-        <Button variant="secondary" onClick={onRetry} loading={retrying}>
-          Try again
-        </Button>
-      ) : null}
+      {action ??
+        (onRetry ? (
+          <Button variant="secondary" onClick={onRetry} loading={retrying}>
+            Try again
+          </Button>
+        ) : null)}
     </div>
   )
 }

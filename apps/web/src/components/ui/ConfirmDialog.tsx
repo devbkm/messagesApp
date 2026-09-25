@@ -1,6 +1,7 @@
-import { useEffect, useId, useRef } from 'react'
+import { useEffect, useId, useRef, type RefObject } from 'react'
 
 import { Button } from './Button'
+import { InlineError } from './StateViews'
 import styles from './ConfirmDialog.module.css'
 
 type ConfirmDialogProps = {
@@ -13,6 +14,13 @@ type ConfirmDialogProps = {
   destructive?: boolean
   /** Shows progress on the confirm button and blocks dismissal while an action runs. */
   busy?: boolean
+  /** Shown inside the dialog when the action failed; the user can retry or cancel. */
+  error?: string
+  /**
+   * Where focus goes after closing if the element that opened the dialog no longer
+   * exists (e.g. the row of a message that was just deleted).
+   */
+  fallbackFocusRef?: RefObject<HTMLElement | null>
   onConfirm: () => void
   onCancel: () => void
 }
@@ -31,6 +39,8 @@ export function ConfirmDialog({
   cancelLabel = 'Cancel',
   destructive = false,
   busy = false,
+  error,
+  fallbackFocusRef,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
@@ -47,8 +57,14 @@ export function ConfirmDialog({
       cancelRef.current?.focus()
     } else if (!open && dialog.open) {
       dialog.close()
+      // The browser restores focus to the opener; if that is gone, focus is left on
+      // <body> (or inside the closed dialog), so move it somewhere meaningful instead.
+      const active = document.activeElement
+      if (!active || active === document.body || dialog.contains(active)) {
+        fallbackFocusRef?.current?.focus()
+      }
     }
-  }, [open])
+  }, [open, fallbackFocusRef])
 
   return (
     <dialog
@@ -68,6 +84,11 @@ export function ConfirmDialog({
       <p id={messageId} className={styles.message}>
         {message}
       </p>
+      {error ? (
+        <div className={styles.error}>
+          <InlineError message={error} />
+        </div>
+      ) : null}
       <div className={styles.actions}>
         <Button ref={cancelRef} variant="secondary" onClick={onCancel} disabled={busy}>
           {cancelLabel}

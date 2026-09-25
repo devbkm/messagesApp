@@ -21,15 +21,20 @@
   text-decoration: none;
 }
 
-.main:hover {
+.main:hover,
+.main:active {
   background: var(--color-surface-pressed);
 }
 
+/* Long subjects wrap to two lines, then end with an ellipsis; the full subject is
+   on the detail page and in the link's accessible name. */
 .title {
-  font: var(--text-subheading);
+  display: -webkit-box;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font: var(--text-subheading);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
 }
 
 .meta {
