@@ -1,3 +1,4 @@
+import Ionicons from '@expo/vector-icons/Ionicons';
 import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
@@ -7,7 +8,7 @@ import { AppText } from './AppText';
 type ListRowProps = {
   title: string;
   /** Secondary line, e.g. a date. */
-  meta?: string;
+  meta?: ReactNode;
   onPress?: () => void;
   /** Overrides the spoken label (defaults to "title, meta"). */
   accessibilityLabel?: string;
@@ -17,27 +18,33 @@ type ListRowProps = {
   testID?: string;
 };
 
-/** Card-style list row. The main area is one pressable target; trailing actions are separate. */
+/**
+ * Card-style list row. The main area is one pressable target, with a chevron when it
+ * navigates somewhere; trailing actions are separate targets.
+ */
 export function ListRow({ title, meta, onPress, accessibilityLabel, accessibilityHint, trailing, testID }: ListRowProps) {
   return (
     <View style={styles.card}>
       <Pressable
         testID={testID}
         accessibilityRole="button"
-        accessibilityLabel={accessibilityLabel ?? (meta ? `${title}, ${meta}` : title)}
+        accessibilityLabel={accessibilityLabel ?? (typeof meta === 'string' ? `${title}, ${meta}` : title)}
         accessibilityHint={accessibilityHint}
         onPress={onPress}
         disabled={!onPress}
         style={({ pressed }) => [styles.main, pressed && styles.pressed]}
       >
-        <AppText variant="subheading" numberOfLines={2}>
-          {title}
-        </AppText>
-        {meta ? (
-          <AppText variant="caption" color="textMuted" numberOfLines={1}>
-            {meta}
+        <View style={styles.text}>
+          <AppText variant="subheading" numberOfLines={2}>
+            {title}
           </AppText>
-        ) : null}
+          {meta ? (
+            <AppText variant="caption" color="textMuted" numberOfLines={2}>
+              {meta}
+            </AppText>
+          ) : null}
+        </View>
+        {onPress ? <Ionicons name="chevron-forward" size={18} color={colors.textMuted} /> : null}
       </Pressable>
       {trailing ? <View style={styles.trailing}>{trailing}</View> : null}
     </View>
@@ -58,16 +65,26 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
     minHeight: touchTarget + spacing.lg,
-    justifyContent: 'center',
-    gap: spacing.xs,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
     paddingVertical: spacing.md,
     paddingLeft: spacing.lg,
     paddingRight: spacing.sm,
+  },
+  text: {
+    flex: 1,
+    minWidth: 0,
+    gap: spacing.xs,
   },
   pressed: {
     backgroundColor: colors.surfacePressed,
   },
   trailing: {
-    paddingRight: spacing.xs,
+    alignSelf: 'stretch',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.xs,
+    borderLeftWidth: StyleSheet.hairlineWidth,
+    borderLeftColor: colors.border,
   },
 });

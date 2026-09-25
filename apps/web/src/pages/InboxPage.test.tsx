@@ -27,7 +27,7 @@ describe('Inbox', () => {
     expect(link).toHaveAttribute('href', '/messages/a')
     expect(within(link).getByText('25.09.2026, 07:28')).toHaveAttribute('datetime', '2026-09-25T07:28:00Z')
     expect(screen.getByRole('link', { name: /Team lunch.*Attachment/ })).toBeInTheDocument()
-    expect(screen.getByText('2 messages')).toBeInTheDocument()
+    expect(screen.getByText('2 messages · newest first')).toBeInTheDocument()
     expect(screen.getByRole('heading', { level: 1, name: 'Inbox' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { level: 2, name: 'Messages' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'New message' })).toHaveAttribute('href', '/messages/new')

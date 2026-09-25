@@ -7,6 +7,7 @@ import {
   ConfirmDialog,
   EmptyState,
   ErrorState,
+  Icon,
   InlineError,
   ListRow,
   ListSkeleton,
@@ -69,18 +70,20 @@ export function InboxPage() {
       <EmptyState
         title="Your inbox is empty"
         message="Messages you write are kept here. Create your first one to get started."
-        action={<ButtonLink to="/messages/new">Write your first message</ButtonLink>}
+        action={
+          <ButtonLink to="/messages/new">
+            <Icon name="plus" size={18} />
+            Write your first message
+          </ButtonLink>
+        }
       />
     )
   } else {
     content = (
       <section aria-labelledby="messages-heading" className={styles.section}>
-        <div className={styles.listHeader}>
-          <h2 id="messages-heading" className="visually-hidden">
-            Messages
-          </h2>
-          <p className={styles.count}>{items!.length === 1 ? '1 message' : `${items!.length} messages`}</p>
-        </div>
+        <h2 id="messages-heading" className="visually-hidden">
+          Messages
+        </h2>
         {messages.isRefetchError ? (
           <div className={styles.refreshError}>
             <InlineError message={`Couldn't refresh. ${describeError(messages.error)}`} />
@@ -98,7 +101,12 @@ export function InboxPage() {
               meta={
                 <>
                   <time dateTime={message.created_at}>{formatDateTime(message.created_at)}</time>
-                  {message.has_attachment ? ' · Attachment' : null}
+                  {message.has_attachment ? (
+                    <span className={styles.attachment}>
+                      <Icon name="paperclip" size={14} />
+                      Attachment
+                    </span>
+                  ) : null}
                 </>
               }
               trailing={
@@ -108,7 +116,8 @@ export function InboxPage() {
                   aria-label={`Delete message: ${message.subject}`}
                   onClick={() => askToDelete(message)}
                 >
-                  Delete
+                  <Icon name="trash" size={18} />
+                  <span className={styles.deleteLabel}>Delete</span>
                 </Button>
               }
             />
@@ -121,8 +130,17 @@ export function InboxPage() {
   return (
     <PageContainer
       title="Inbox"
+      subtitle={items && items.length > 0 ? `${countLabel(items.length)} · newest first` : undefined}
       headingRef={headingRef}
-      actions={isEmpty ? undefined : <ButtonLink to="/messages/new">New message</ButtonLink>}>
+      actions={
+        isEmpty ? undefined : (
+          <ButtonLink to="/messages/new">
+            <Icon name="plus" size={18} />
+            New message
+          </ButtonLink>
+        )
+      }
+    >
       {content}
       <ConfirmDialog
         open={dialogOpen}
@@ -141,4 +159,8 @@ export function InboxPage() {
       </p>
     </PageContainer>
   )
+}
+
+function countLabel(count: number) {
+  return count === 1 ? '1 message' : `${count} messages`
 }

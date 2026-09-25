@@ -75,6 +75,9 @@ function AttachmentCard({ attachment }: { attachment: Attachment }) {
     >
       <Ionicons name="document-attach-outline" size={24} color={colors.textMuted} />
       <View style={styles.attachmentText}>
+        <AppText variant="caption" color="textMuted">
+          Attachment
+        </AppText>
         <AppText variant="label" numberOfLines={1}>
           {attachment.filename}
         </AppText>

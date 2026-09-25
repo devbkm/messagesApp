@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useBlocker, useNavigate } from 'react-router-dom'
 
 import { ApiError } from '../api/client'
-import { Button, ButtonLink, ConfirmDialog, InlineError, PageContainer, TextField } from '../components/ui'
+import { Button, ButtonLink, ConfirmDialog, Icon, InlineError, PageContainer, TextField } from '../components/ui'
 import { useCreateMessage } from '../hooks/useMessages'
 import { describeError } from '../utils/errors'
 import { SUBJECT_MAX_LENGTH, effectiveLength, validateMessage, type MessageFormValues } from '../utils/validation'
@@ -77,7 +77,8 @@ export function CreateMessagePage() {
       title="New message"
       backLink={
         <ButtonLink to="/" variant="ghost">
-          ← Back to inbox
+          <Icon name="arrowLeft" size={18} />
+          Back to inbox
         </ButtonLink>
       }
     >

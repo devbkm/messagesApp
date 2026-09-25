@@ -158,7 +158,7 @@ describe('Leaving with a draft', () => {
     expect(subject()).toHaveValue('Half-written')
     expect(router.state.location.pathname).toBe('/messages/new')
 
-    await user.click(screen.getByRole('link', { name: '← Back to inbox' }))
+    await user.click(screen.getByRole('link', { name: 'Back to inbox' }))
     await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Discard' }))
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Inbox' })).toBeInTheDocument()

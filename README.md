@@ -13,9 +13,10 @@ It is built as a practical exercise and consists of:
 Both clients talk to the same versioned REST API (`/api/v1/...`). The backend is the
 single source of truth for ownership, validation, creation dates and deletion.
 
-> **Project status:** Phase 6 — hardening. The backend, the React Native app and the
-> optional React web app are complete, and they have been through a dedicated security,
-> reliability and edge-case review (see [Security and reliability](#security-and-reliability)).
+> **Project status:** Phase 7 — UI polish. The backend, the React Native app and the
+> optional React web app are complete. They have been through a security, reliability
+> and edge-case review (see [Security and reliability](#security-and-reliability)) and a
+> UI/usability review (see [Design system](#design-system)).
 
 ---
 
@@ -612,20 +613,33 @@ Both clients implement the same small set of building blocks:
 | Typography | `AppText` (`title`, `heading`, `subheading`, `body`, `label`, `caption`) | CSS font tokens |
 | Button | `Button` — `primary` / `secondary` / `danger` / `ghost`, loading + disabled | `Button`, `ButtonLink` |
 | Input | `TextField` — visible label, hint, error, character counter | `TextField` (input / textarea) |
-| List row | `ListRow` — card row with optional trailing action | `ListRow` (inside `<ul>`) |
+| List row | `ListRow` — card row with a chevron and optional trailing action | `ListRow` (inside `<ul>`) |
+| Icons | Ionicons (`@expo/vector-icons`), `IconButton` | `Icon`: small inline SVG set, no icon font |
 | Screen container | `Screen` — safe areas, keyboard avoidance, pinned footer | `PageContainer` + `AppLayout` |
 | States | `LoadingState`, `EmptyState`, `ErrorState` (with retry), `InlineError` | same |
 | Confirmation | `ConfirmDialog` (modal) | `ConfirmDialog` (native `<dialog>`) |
 
 Guidelines:
 
-- **One primary action per screen.** Destructive actions use the `danger` style and
-  always go through `ConfirmDialog`.
+- **One primary action per screen.** Create actions carry a "+" icon on both clients.
+- **Rows that open something show a chevron.** The row's secondary line shows the
+  date/time and, when present, a paperclip "Attachment" marker.
+- **Destructive actions are quiet until confirmed.** The per-row delete control is
+  neutral grey (red only on hover/focus on the web); the `danger` style is reserved for
+  the confirmation dialog, so a list does not read as a wall of warnings.
+- **Page purpose is stated.** The inbox shows "N messages · newest first" under its
+  title.
+- **App identity:** the mobile app icon, Android adaptive icon and favicons use the same
+  inbox-tray mark as the web header and favicon (no template placeholders).
 - **Touch targets are at least 48 px/dp** (buttons, inputs, list rows).
 - **Spacing** uses a 4-based scale (`4, 8, 12, 16, 24, 32, 48`).
 - **Contrast:** text colours meet WCAG AA (≥ 4.5:1) on the background and surface colours.
 - **Content width** is capped (640 dp on mobile tablets, 720 px on web) for readability; the
-  web layout has no horizontal overflow down to 320 px wide.
+  web layout has no horizontal overflow down to 320 px wide. On phones the web page's
+  primary action spans the full width and row delete controls become icon-only (they
+  keep their accessible name).
+- **Reviewed at** 320×568, 375×812, 768×1024 and 1024–1280 px wide. The mobile app was
+  checked in a phone-sized browser; keyboard behaviour still needs a check on a device.
 
 ### Accessibility conventions
 
@@ -653,4 +667,5 @@ Guidelines:
 4. **Mobile app** — inbox, detail and create screens on the real API, with tests ✅
 5. **Web client** — the same features on the shared API, responsive and keyboard accessible ✅
 6. **Hardening** — security, reliability and edge-case review, with fixes and tests ✅
-7. Final documentation: decisions and trade-offs
+7. **UI polish** — consistency and usability review of both clients ✅
+8. Final documentation: decisions and trade-offs

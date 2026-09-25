@@ -38,3 +38,11 @@
   display: flex;
   gap: var(--space-sm);
 }
+
+/* On phones the primary action sits under the title at full width, easy to reach. */
+@media (max-width: 480px) {
+  .actions,
+  .actions > * {
+    width: 100%;
+  }
+}

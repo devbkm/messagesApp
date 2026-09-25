@@ -125,7 +125,7 @@ describe('message deleted elsewhere', () => {
 
     await user.click(await screen.findByRole('link', { name: /Deleted in another tab/ }))
     expect(await screen.findByRole('heading', { level: 1, name: 'Message not found' })).toBeInTheDocument()
-    await user.click(screen.getByRole('link', { name: 'Back to inbox' }))
+    await user.click(screen.getByRole('link', { name: 'Go to inbox' }))
 
     expect(await screen.findByRole('link', { name: /Still here/ })).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: /Deleted in another tab/ })).not.toBeInTheDocument()
@@ -163,7 +163,7 @@ describe('content edge cases', () => {
 
     renderApp()
 
-    expect(await screen.findByText('500 messages')).toBeInTheDocument()
+    expect(await screen.findByText('500 messages · newest first')).toBeInTheDocument()
     expect(screen.getAllByRole('listitem')).toHaveLength(500)
   })
 

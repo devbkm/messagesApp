@@ -1,5 +1,6 @@
 export { Button, ButtonLink } from './Button'
 export { ConfirmDialog } from './ConfirmDialog'
+export { Icon } from './Icon'
 export { ListRow } from './ListRow'
 export { PageContainer } from './PageContainer'
 export { ListSkeleton } from './Skeleton'

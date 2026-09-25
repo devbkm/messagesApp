@@ -41,7 +41,7 @@ export function Button({
       {...rest}
     >
       {loading ? <Spinner size="small" /> : null}
-      <span>{children}</span>
+      <span className={styles.content}>{children}</span>
     </button>
   )
 }

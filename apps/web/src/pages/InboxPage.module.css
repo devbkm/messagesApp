@@ -4,17 +4,6 @@
   gap: var(--space-md);
 }
 
-.listHeader {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-}
-
-.count {
-  font: var(--text-caption);
-  color: var(--color-text-muted);
-}
-
 .refreshError {
   display: flex;
   flex-wrap: wrap;
@@ -34,7 +23,34 @@
   padding: 0;
 }
 
-/* Two classes so this wins over the ghost variant regardless of stylesheet order. */
+/* Neutral until hovered or focused: red is reserved for the confirmation step, so a
+   list of messages does not read as a wall of warnings. Two classes so this wins
+   over the ghost variant regardless of stylesheet order. */
 .list .deleteButton {
+  padding: 0 var(--space-md);
+  color: var(--color-text-muted);
+}
+
+.list .deleteButton:hover,
+.list .deleteButton:focus-visible {
   color: var(--color-danger);
+  background: var(--color-danger-subtle);
+}
+
+.attachment {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xxs);
+}
+
+/* On narrow screens the delete control is icon-only (it keeps its accessible name). */
+@media (max-width: 480px) {
+  .deleteLabel {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
 }

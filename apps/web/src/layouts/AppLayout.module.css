@@ -35,6 +35,7 @@
 .brand {
   display: inline-flex;
   align-items: center;
+  gap: var(--space-sm);
   min-height: var(--touch-target);
   border-radius: var(--radius-sm);
   font: var(--text-subheading);
@@ -55,4 +56,10 @@
   .main {
     padding-top: var(--space-xxl);
   }
+}
+
+.logo {
+  width: 28px;
+  height: 28px;
+  color: var(--color-primary);
 }

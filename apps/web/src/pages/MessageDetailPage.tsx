@@ -1,7 +1,7 @@
 import { useParams } from 'react-router-dom'
 
 import type { Attachment } from '../api/types'
-import { ButtonLink, ErrorState, LoadingState, PageContainer } from '../components/ui'
+import { ButtonLink, ErrorState, Icon, LoadingState, PageContainer } from '../components/ui'
 import { useMessage } from '../hooks/useMessages'
 import { describeError, isNotFound } from '../utils/errors'
 import { formatDateTime, formatFileSize } from '../utils/format'
@@ -9,7 +9,8 @@ import styles from './MessageDetailPage.module.css'
 
 const backLink = (
   <ButtonLink to="/" variant="ghost">
-    ← Back to inbox
+    <Icon name="arrowLeft" size={18} />
+    Back to inbox
   </ButtonLink>
 )
 
@@ -31,7 +32,7 @@ export function MessageDetailPage() {
         <ErrorState
           title="This message doesn't exist"
           message="It may have been deleted. Go back to your inbox to see your current messages."
-          action={<ButtonLink to="/">Back to inbox</ButtonLink>}
+          action={<ButtonLink to="/">Go to inbox</ButtonLink>}
         />
       </PageContainer>
     ) : (

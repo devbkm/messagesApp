@@ -1,3 +1,5 @@
+import Ionicons from '@expo/vector-icons/Ionicons';
+import type { ComponentProps } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -15,6 +17,8 @@ type Variant = 'primary' | 'secondary' | 'danger' | 'ghost';
 
 type ButtonProps = Omit<PressableProps, 'children' | 'style'> & {
   label: string;
+  /** Optional leading icon (decorative; the label names the button). */
+  icon?: ComponentProps<typeof Ionicons>['name'];
   variant?: Variant;
   loading?: boolean;
   fullWidth?: boolean;
@@ -54,6 +58,7 @@ const palette: Record<Variant, { bg: string; pressed: string; text: string; bord
  */
 export function Button({
   label,
+  icon,
   variant = 'primary',
   loading = false,
   disabled,
@@ -93,6 +98,13 @@ export function Button({
           <ActivityIndicator
             size="small"
             color={variant === 'secondary' || variant === 'ghost' ? colors.primary : colors.textOnPrimary}
+            importantForAccessibility="no"
+          />
+        ) : icon ? (
+          <Ionicons
+            name={icon}
+            size={20}
+            color={isDisabled ? colors.disabledText : tone.text}
             importantForAccessibility="no"
           />
         ) : null}

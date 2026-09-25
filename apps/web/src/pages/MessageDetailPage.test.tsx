@@ -57,7 +57,7 @@ describe('Message detail', () => {
     const { user } = renderApp('/messages/gone')
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Message not found' })).toBeInTheDocument()
-    await user.click(screen.getByRole('link', { name: 'Back to inbox' }))
+    await user.click(screen.getByRole('link', { name: 'Go to inbox' }))
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Inbox' })).toBeInTheDocument()
   })

@@ -87,7 +87,7 @@ export function InboxScreen({ navigation }: RootStackScreenProps<'Inbox'>) {
       <EmptyState
         title="Your inbox is empty"
         message="Messages you write are kept here. Create your first one to get started."
-        action={<Button label="Write your first message" onPress={openCreate} />}
+        action={<Button label="Write your first message" icon="add" onPress={openCreate} />}
       />
     );
   } else {
@@ -103,7 +103,7 @@ export function InboxScreen({ navigation }: RootStackScreenProps<'Inbox'>) {
               <InlineError message={`Couldn't refresh. ${describeError(messages.error)}`} />
             ) : null}
             <AppText variant="caption" color="textMuted">
-              {items!.length === 1 ? '1 message' : `${items!.length} messages`}
+              {items!.length === 1 ? '1 message' : `${items!.length} messages`} · newest first
             </AppText>
           </View>
         }
@@ -122,6 +122,7 @@ export function InboxScreen({ navigation }: RootStackScreenProps<'Inbox'>) {
         hasMessages ? (
           <Button
             label="New message"
+            icon="add"
             fullWidth
             accessibilityHint="Opens the form to write a new message"
             onPress={openCreate}

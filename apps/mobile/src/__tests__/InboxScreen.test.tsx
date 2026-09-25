@@ -25,8 +25,9 @@ describe('Inbox rendering', () => {
     expect(await screen.findByText('Quarterly report')).toBeOnTheScreen();
     expect(screen.getByText('25.09.2026, 07:28')).toBeOnTheScreen();
     expect(screen.getByText('Team lunch')).toBeOnTheScreen();
-    expect(screen.getByText('03.01.2026, 18:05 · Attachment')).toBeOnTheScreen();
-    expect(screen.getByText('2 messages')).toBeOnTheScreen();
+    // The paperclip icon sits between the date and the word "Attachment".
+    expect(screen.getByText(/^03\.01\.2026, 18:05 · .*Attachment$/)).toBeOnTheScreen();
+    expect(screen.getByText('2 messages · newest first')).toBeOnTheScreen();
     expect(screen.getByRole('button', { name: 'New message' })).toBeOnTheScreen();
   });
 

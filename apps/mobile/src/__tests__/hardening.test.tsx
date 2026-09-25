@@ -161,7 +161,7 @@ describe('content edge cases', () => {
 
     await renderApp();
 
-    expect(await screen.findByText('300 messages')).toBeOnTheScreen();
+    expect(await screen.findByText('300 messages · newest first')).toBeOnTheScreen();
     expect(screen.getByText('Message 0')).toBeOnTheScreen();
     // Only the first screenfuls are mounted; the rest render on scroll.
     expect(screen.queryByText('Message 299')).not.toBeOnTheScreen();
