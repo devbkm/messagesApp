@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
+import { KeyboardAvoidingView, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView, type Edge } from 'react-native-safe-area-context';
 
 import { colors, maxContentWidth, spacing } from '../../theme/tokens';
@@ -8,8 +8,10 @@ type ScreenProps = {
   children: ReactNode;
   /** Wrap content in a ScrollView (forms, long text). Lists should use their own FlatList instead. */
   scroll?: boolean;
-  /** Keep inputs visible above the software keyboard. */
+  /** Keep inputs and the footer visible above the software keyboard. */
   avoidKeyboard?: boolean;
+  /** Height of any header above the screen, so keyboard avoidance lines up (see useHeaderHeight). */
+  keyboardOffset?: number;
   /** Content pinned to the bottom (e.g. a primary action), kept above the home indicator. */
   footer?: ReactNode;
   /** The native stack header already handles the top inset. */
@@ -21,6 +23,7 @@ export function Screen({
   children,
   scroll = false,
   avoidKeyboard = false,
+  keyboardOffset = 0,
   footer,
   edges = ['left', 'right', 'bottom'],
 }: ScreenProps) {
@@ -48,8 +51,10 @@ export function Screen({
       {avoidKeyboard ? (
         <KeyboardAvoidingView
           style={styles.fill}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 96 : 0}
+          // Android runs edge-to-edge (SDK 57), so the window is not resized for the
+          // keyboard and padding is needed on both platforms.
+          behavior="padding"
+          keyboardVerticalOffset={keyboardOffset}
         >
           {inner}
         </KeyboardAvoidingView>

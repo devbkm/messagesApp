@@ -26,6 +26,8 @@ type ErrorStateProps = {
   message: string;
   onRetry?: () => void;
   retrying?: boolean;
+  /** Replaces the retry button when retrying cannot help (e.g. "not found"). */
+  action?: ReactNode;
 };
 
 /** Error with a plain-language explanation and an optional retry action. */
@@ -34,6 +36,7 @@ export function ErrorState({
   message,
   onRetry,
   retrying = false,
+  action,
 }: ErrorStateProps) {
   return (
     <View style={styles.centered}>
@@ -45,9 +48,8 @@ export function ErrorState({
           {message}
         </AppText>
       </View>
-      {onRetry ? (
-        <Button label="Try again" variant="secondary" onPress={onRetry} loading={retrying} />
-      ) : null}
+      {action ??
+        (onRetry ? <Button label="Try again" variant="secondary" onPress={onRetry} loading={retrying} /> : null)}
     </View>
   );
 }

@@ -13,9 +13,9 @@ It is built as a practical exercise and consists of:
 Both clients talk to the same versioned REST API (`/api/v1/...`). The backend is the
 single source of truth for ownership, validation, creation dates and deletion.
 
-> **Project status:** Phase 3 — REST API. The project structure, design system,
-> navigation, the database layer and the complete messages REST API are in place. The
-> client screens are connected to the API in later phases (see [Roadmap](#roadmap)).
+> **Project status:** Phase 4 — mobile app. The backend (database + REST API) and the
+> React Native app (inbox, message detail, create message) are complete. The web client
+> still shows placeholder pages and is connected in a later phase (see [Roadmap](#roadmap)).
 
 ---
 
@@ -79,10 +79,15 @@ messagesApp/
 │   ├── mobile/                 # React Native (Expo) app — primary client
 │   │   ├── App.tsx             # Providers + navigation root
 │   │   └── src/
-│   │       ├── components/ui/  # Design-system components
+│   │       ├── api/            # HTTP client, endpoint functions, wire types, query client
+│   │       ├── components/     # ui/ (design system) and messages/ (inbox row)
+│   │       ├── hooks/          # TanStack Query hooks (list, detail, create, delete)
+│   │       ├── identity/       # Per-device user id (sent as X-User-Id)
 │   │       ├── navigation/     # Stack navigator + typed route params
 │   │       ├── screens/        # Inbox, MessageDetail, CreateMessage
-│   │       └── theme/          # Design tokens
+│   │       ├── theme/          # Design tokens
+│   │       ├── utils/          # Date formatting, validation, error messages
+│   │       └── __tests__/      # Jest + React Native Testing Library
 │   └── web/                    # React web app (optional client)
 │       └── src/
 │           ├── components/ui/  # Design-system components (CSS Modules)
@@ -163,7 +168,9 @@ npx expo start
 ```
 
 Scan the QR code with Expo Go, or press `a` (Android) / `i` (iOS). On a physical device,
-set `EXPO_PUBLIC_API_URL` to your computer's LAN IP, not `localhost`.
+set `EXPO_PUBLIC_API_URL` to your computer's LAN IP (e.g. `http://192.168.1.20:8000`),
+not `localhost`; on the Android emulator use `http://10.0.2.2:8000`. Restart
+`npx expo start` after changing `.env`.
 
 ### 4. Web app (optional)
 
@@ -200,7 +207,7 @@ Only `.env.example` files are committed. Client-side variables (`EXPO_PUBLIC_*`,
 | Backend types | `mypy app tests alembic` |
 | Backend tests | `pytest` (needs the database container running) |
 | Migrations match models | `alembic check` |
-| Mobile types / lint | `npm run typecheck` · `npm run lint` |
+| Mobile tests / types / lint | `npm test` · `npm run typecheck` · `npm run lint` |
 | Web types / lint / build | `npm run typecheck` · `npm run lint` · `npm run build` |
 
 ---
@@ -261,6 +268,10 @@ Messages belong to a user, and the backend alone decides who that is:
   knows a UUID can act as that user. It keeps the exercise simple, as the brief allows.
   Moving to JWT/OAuth means rewriting only `get_current_user` (verify the token, map its
   subject to a user). Services, models and routes stay the same.
+- **Mobile client:** on first launch the app generates a random UUID (`expo-crypto`),
+  stores it on the device (AsyncStorage) and sends it with every request. The same
+  inbox is therefore shown across restarts; reinstalling the app starts a new, empty
+  inbox. With real authentication, `src/identity/userId.ts` would return a token instead.
 
 ---
 
@@ -381,6 +392,62 @@ responses are sent with `Cache-Control: no-store` (they hold private data) and
 
 ---
 
+## Mobile app
+
+The React Native app is the primary client. It has three screens on a native stack:
+
+| Screen | What it shows | States |
+| --- | --- | --- |
+| **Inbox** (landing) | A virtualised `FlatList` of the user's messages, newest first. Each card shows the **subject** (up to two lines) and the **date and time** (`dd.mm.YYYY, HH:mm`), plus "Attachment" when there is one. Tapping a card opens the detail screen; a trash button deletes. "New message" is pinned at the bottom. Pull to refresh. | Skeleton while loading (never a false "empty"), friendly empty state with "Write your first message", error with **Try again**, and an inline banner if a background refresh fails |
+| **Message detail** | Subject as the page title, then date/time, the full text (scrollable, selectable), and attachment details if present | Loading, "Message not found" with **Back to inbox**, other errors with **Try again** |
+| **Create message** | Subject and message fields with visible labels, placeholders and a live `n/40` counter; submit button pinned above the keyboard | Validation, submission progress, failure banner, discard-draft confirmation |
+
+**Data fetching.** TanStack Query holds the server state. `useMessageList`, `useMessage`,
+`useCreateMessage` and `useDeleteMessage` (`src/hooks/useMessages.ts`) wrap the API
+functions. Queries retry once on network/5xx errors but never on 4xx; mutations never
+retry automatically, so a create or delete only happens when the user asks. Data is
+refetched when the app returns to the foreground.
+
+**Creating.** Validation mirrors the server (subject 1–40 characters and text required,
+both after trimming). An over-long subject is reported while typing. "Required" errors
+appear once a field is left or on submit, and focus moves to the first invalid field.
+Pasted text is never silently truncated; the counter and the error explain the
+problem instead. While saving, the button shows progress and ignores further taps. On
+success the new message is written into the cached list at once, the list is
+refetched, and the app returns to the inbox, so the new message is visible
+immediately. On failure the form stays open with its content, a banner explains what
+happened, and field errors from the server appear next to the field. Leaving with a
+draft asks "Discard this message?" first.
+
+**Deleting.** The trash button opens a confirmation dialog naming the message. While
+the request runs, Delete shows progress and both buttons are disabled, so duplicate
+requests are impossible. On success the dialog closes and the row disappears. On
+failure the message stays in the list, the dialog shows the error and the button
+becomes **Try again**.
+
+**Errors.** The API client (`src/api/client.ts`) turns every failure (offline, timeout
+after 15 s, error envelope, unexpected response) into an `ApiError`, and
+`describeError` maps it to a short, plain sentence. Raw error messages and stack
+traces are never shown.
+
+**Accessibility.** Rows are announced as "subject, 25 September 2026 at 07:28", and
+delete buttons as "Delete message: subject". Inputs are named "Subject, required".
+Errors start with "Error:", so they do not rely on colour. The loading skeleton is a
+single announced progress element. Outcomes ("Message created", "Message deleted") are
+announced to screen readers. All controls are at least 48 dp.
+
+**Tests** (`npm test`, 36 tests) render the whole app with the API module mocked and
+cover:
+- inbox rendering, accessible names and long subjects;
+- loading, empty and error states, including retry;
+- delete: confirmation, cancel, progress, duplicate taps, success, and failure with retry;
+- form validation, create success (back to inbox with the message listed) and failure
+  (input kept, retry), and server field errors;
+- the discard-draft guard and navigation to and from the detail screen;
+- the API client and the formatting and validation helpers.
+
+---
+
 ## Design system
 
 Both clients implement the same small set of building blocks:
@@ -428,7 +495,6 @@ Guidelines:
 1. **Foundation** — project structure, design system, navigation, `/health` ✅
 2. **Database** — models, migrations, integrity rules, current-user seam ✅
 3. **REST API** — messages endpoints, user scoping, validation, errors, OpenAPI ✅
-4. Mobile: API client and data fetching
-5. Mobile: inbox, detail and create screens
-6. Web: the same features on the shared API
-7. Final documentation: data model, decisions and trade-offs
+4. **Mobile app** — inbox, detail and create screens on the real API, with tests ✅
+5. Web: the same features on the shared API
+6. Final documentation: decisions and trade-offs

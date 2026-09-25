@@ -21,6 +21,10 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "scheme": "inbox"
+    "scheme": "inbox",
+    "plugins": [
+      "expo-font",
+      "expo-asset"
+    ]
   }
 }

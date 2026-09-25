@@ -3,6 +3,7 @@ import { Modal, Pressable, StyleSheet, View } from 'react-native';
 import { colors, radius, spacing } from '../../theme/tokens';
 import { AppText } from './AppText';
 import { Button } from './Button';
+import { InlineError } from './StateViews';
 
 type ConfirmDialogProps = {
   visible: boolean;
@@ -14,6 +15,8 @@ type ConfirmDialogProps = {
   destructive?: boolean;
   /** Shows progress on the confirm button and blocks dismissal while an action runs. */
   busy?: boolean;
+  /** Shown inside the dialog when the action failed; the user can retry or cancel. */
+  error?: string;
   onConfirm: () => void;
   onCancel: () => void;
 };
@@ -30,10 +33,11 @@ export function ConfirmDialog({
   cancelLabel = 'Cancel',
   destructive = false,
   busy = false,
+  error,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
-  const dismiss = busy ? undefined : onCancel;
+  const dismiss = busy ? () => {} : onCancel;
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={dismiss} statusBarTranslucent>
@@ -44,9 +48,10 @@ export function ConfirmDialog({
           accessibilityLabel="Close dialog"
           importantForAccessibility="no"
         />
-        <View style={styles.dialog} accessibilityViewIsModal accessibilityRole="alert">
+        <View style={styles.dialog} accessibilityViewIsModal>
           <AppText variant="heading">{title}</AppText>
           <AppText color="textMuted">{message}</AppText>
+          {error ? <InlineError message={error} /> : null}
           <View style={styles.actions}>
             <Button label={cancelLabel} variant="secondary" onPress={onCancel} disabled={busy} style={styles.action} />
             <Button
