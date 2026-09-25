@@ -91,7 +91,7 @@ same backend. The backend exposes **REST endpoints** and stores messages in a
   UUID once, stores it, and sends it as `X-User-Id`. All identity handling sits in one
   function on the server, so it can later be replaced by real authentication (JWT/OAuth)
   without touching the business logic.
-- **Quality:** 211 automated tests (110 backend, 51 mobile, 50 web). All three parts
+- **Quality:** 212 automated tests (110 backend, 51 mobile, 51 web). All three parts
   pass strict type checks and lint, and the builds and migration drift check succeed.
   A dedicated security, reliability and edge-case review, and a UI/usability review,
   were carried out.
@@ -280,6 +280,7 @@ messagesApp/
 │   ├── tests/                  # pytest suites (models, services, API, hardening, health)
 │   ├── requirements.txt        # Runtime dependencies (pinned)
 │   └── requirements-dev.txt    # + test and quality tools
+├── docs/FINAL_REVIEW.md        # Final requirement checklist and review
 ├── docker-compose.yml          # Local PostgreSQL 17
 └── README.md
 ```
@@ -777,7 +778,7 @@ the only client setting.
 | --- | --- | --- | --- |
 | Backend | `pytest` (database container running) | 110 | See below |
 | Mobile | `npm test` | 51 | See below |
-| Web | `npm test` | 50 | See below |
+| Web | `npm test` | 51 | See below |
 
 **Backend (110 tests).**
 - They run against real PostgreSQL. The migrations run up, down and up again first,
@@ -809,10 +810,11 @@ the only client setting.
   virtualised long list, the user id persisting across restarts, and the error
   boundary.
 
-**Web (50 tests).**
+**Web (51 tests).**
 - Vitest with Testing Library renders the real routes.
 - **Screens and states:** the same screen, state and failure scenarios as mobile.
 - **Keyboard:** Tab order, the skip link, and focus after deleting.
+- **History:** Back from the inbox after creating never reopens the submitted form.
 - **Dialog:** its accessible name and description.
 - **Identity:** the user id with no secure context and with blocked storage.
 - **Errors:** the route error page.
@@ -952,6 +954,9 @@ These are **not implemented**; they are the natural next steps before real use:
 
 ## Requirement coverage
 
+The detailed checklist, with status and remaining issues per requirement and per review
+area, plus the core-journey walkthrough, is in [docs/FINAL_REVIEW.md](docs/FINAL_REVIEW.md).
+
 | Exercise requirement | Implementation |
 | --- | --- |
 | React Native mobile app | `apps/mobile` (Expo SDK 57, TypeScript) |
@@ -987,4 +992,6 @@ The project was built in reviewed phases, each committed separately:
 5. Responsive React web client
 6. Security, reliability and edge-case hardening
 7. UI polish and usability review
-8. Final documentation and review (this document)
+8. Final documentation
+9. Final exercise review: requirement checklist, core-journey walkthrough on both
+   clients, one navigation fix ([docs/FINAL_REVIEW.md](docs/FINAL_REVIEW.md))

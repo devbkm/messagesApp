@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from '@testing-library/react'
+import { act, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ApiError } from '../api/client'
@@ -95,6 +95,21 @@ describe('Create message form', () => {
     expect(await screen.findByRole('link', { name: /Weekly update/ })).toBeInTheDocument()
     expect(router.state.location.pathname).toBe('/')
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('does not leave the submitted form in history', async () => {
+    mockedApi.createMessage.mockResolvedValue(fullMessage({ id: 'new', subject: 'Done' }))
+    const app = renderApp('/')
+    await app.user.click(await screen.findByRole('link', { name: 'New message' }))
+    await app.user.type(await screen.findByRole('textbox', { name: 'Subject (required)' }), 'Done')
+    await app.user.type(screen.getByRole('textbox', { name: 'Message (required)' }), 'Body')
+    await app.user.click(screen.getByRole('button', { name: 'Create message' }))
+    await waitFor(() => expect(app.router.state.location.pathname).toBe('/'))
+
+    // Going back from the inbox skips the (already submitted) form.
+    await act(() => app.router.navigate(-1))
+
+    expect(app.router.state.location.pathname).not.toBe('/messages/new')
   })
 
   it('keeps the input and allows retry when saving fails', async () => {

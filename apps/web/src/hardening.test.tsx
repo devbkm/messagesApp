@@ -157,13 +157,14 @@ describe('content edge cases', () => {
     expect(document.querySelector('main img')).toBeNull()
   })
 
-  it('renders a long inbox', async () => {
+  // Rendering 500 rows in jsdom takes a few seconds, more when files run in parallel.
+  it('renders a long inbox', { timeout: 20_000 }, async () => {
     const items = Array.from({ length: 500 }, (_, i) => summary(`m${i}`, `Message ${i}`))
     serve({ 'GET /api/v1/messages': () => reply(200, { items }) })
 
     renderApp()
 
-    expect(await screen.findByText('500 messages · newest first')).toBeInTheDocument()
+    expect(await screen.findByText('500 messages · newest first', {}, { timeout: 10_000 })).toBeInTheDocument()
     expect(screen.getAllByRole('listitem')).toHaveLength(500)
   })
 

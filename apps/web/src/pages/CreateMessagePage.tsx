@@ -47,8 +47,9 @@ export function CreateMessagePage() {
   }, [guardActive])
 
   // Leave once the "created" state has rendered, so the draft guard is already off.
+  // Replace the form's history entry: Back from the inbox must not reopen a submitted form.
   useEffect(() => {
-    if (created) navigate('/')
+    if (created) navigate('/', { replace: true })
   }, [created, navigate])
 
   const update = (field: Field) => (value: string) => {
