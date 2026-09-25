@@ -2,6 +2,7 @@
 
 from app.db.base import Base
 from app.models.message import Message
+from app.models.session import UserSession
 from app.models.user import User
 
-__all__ = ["Base", "Message", "User"]
+__all__ = ["Base", "Message", "User", "UserSession"]

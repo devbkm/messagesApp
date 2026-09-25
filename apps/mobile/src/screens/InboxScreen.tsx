@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react';
 import { AccessibilityInfo, FlatList, RefreshControl, StyleSheet, View } from 'react-native';
 
 import type { MessageSummary } from '../api/types';
+import { AccountBar } from '../components/AccountBar';
 import { MessageListItem } from '../components/messages/MessageListItem';
 import {
   AppText,
@@ -130,6 +131,7 @@ export function InboxScreen({ navigation }: RootStackScreenProps<'Inbox'>) {
         ) : undefined
       }
     >
+      <AccountBar />
       {content}
       <ConfirmDialog
         visible={dialogOpen}

@@ -39,3 +39,29 @@ export type ApiErrorBody = {
     details?: { field: string; message: string }[];
   };
 };
+
+export type AuthUser = {
+  id: string;
+  name: string;
+  email: string;
+  created_at: string;
+};
+
+export type AuthSession = {
+  user: AuthUser;
+  /** Returned to native clients; stored in secure storage. */
+  token: string;
+  expires_at: string;
+};
+
+export type SignupInput = {
+  name: string;
+  email: string;
+  password: string;
+  password_confirmation: string;
+};
+
+export type LoginInput = {
+  email: string;
+  password: string;
+};

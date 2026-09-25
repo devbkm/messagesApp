@@ -24,7 +24,8 @@
     "scheme": "inbox",
     "plugins": [
       "expo-font",
-      "expo-asset"
+      "expo-asset",
+      "expo-secure-store"
     ]
   }
 }

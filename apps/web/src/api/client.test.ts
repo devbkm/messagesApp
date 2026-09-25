@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { ApiError, apiRequest } from './client'
+import { ApiError, apiRequest, setUnauthorizedHandler } from './client'
 
 const fetchMock = vi.fn()
 
@@ -14,7 +14,7 @@ function jsonResponse(status: number, body: unknown) {
 }
 
 describe('apiRequest', () => {
-  it('sends a persistent user id and the JSON body', async () => {
+  it('sends the session cookie with the transport header, never a token', async () => {
     fetchMock.mockResolvedValue(jsonResponse(201, { id: 'm1' }))
 
     const result = await apiRequest('/api/v1/messages', { method: 'POST', body: { subject: 'Hi', text: 'B' } })
@@ -22,9 +22,22 @@ describe('apiRequest', () => {
     expect(result).toEqual({ id: 'm1' })
     const [url, init] = fetchMock.mock.calls[0]
     expect(url).toBe('http://api.test/api/v1/messages')
-    expect(init.headers['X-User-Id']).toMatch(/^[0-9a-f-]{36}$/)
-    expect(init.headers['X-User-Id']).toBe(window.localStorage.getItem('inbox.userId'))
+    expect(init.credentials).toBe('include')
+    expect(init.headers['X-Auth-Transport']).toBe('cookie')
+    expect(init.headers.Authorization).toBeUndefined()
     expect(JSON.parse(init.body)).toEqual({ subject: 'Hi', text: 'B' })
+  })
+
+  it('reports a 401 so the user is signed out, unless asked not to', async () => {
+    const handler = vi.fn()
+    const unsubscribe = setUnauthorizedHandler(handler)
+    fetchMock.mockResolvedValue(jsonResponse(401, { error: { code: 'session_expired', message: 'Expired' } }))
+
+    await expect(apiRequest('/x', { reportUnauthorized: false })).rejects.toMatchObject({ status: 401 })
+    expect(handler).not.toHaveBeenCalled()
+    await expect(apiRequest('/x')).rejects.toMatchObject({ status: 401 })
+    expect(handler).toHaveBeenCalledWith(expect.objectContaining({ code: 'session_expired' }))
+    unsubscribe()
   })
 
   it('maps the error envelope, including field errors', async () => {

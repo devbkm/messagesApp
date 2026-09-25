@@ -59,6 +59,25 @@ def _alembic_config(url: str) -> Config:
     return config
 
 
+@pytest.fixture(scope="session", autouse=True)
+def fast_password_hashing() -> Iterator[None]:
+    """Use cheap Argon2 parameters in tests.
+
+    Production uses the library's recommended (deliberately slow) parameters; the test
+    suite signs up many users, so it swaps in a fast hasher. Hashing still goes through
+    the same code path and format.
+    """
+    from argon2 import PasswordHasher
+
+    from app.core import security
+
+    original = (security._hasher, security._DUMMY_HASH)
+    security._hasher = PasswordHasher(time_cost=1, memory_cost=1024, parallelism=1)
+    security._DUMMY_HASH = security._hasher.hash("dummy-password")
+    yield
+    security._hasher, security._DUMMY_HASH = original
+
+
 @pytest.fixture(scope="session")
 def db_engine() -> Iterator[Engine]:
     try:

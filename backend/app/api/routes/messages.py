@@ -19,7 +19,7 @@ MessageId = Annotated[uuid.UUID, Path(description="The message id (UUID).")]
 router = APIRouter(
     prefix="/messages",
     tags=["messages"],
-    responses=error_responses(401, 503),
+    responses=error_responses(401, 422, 503),
 )
 
 

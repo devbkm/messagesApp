@@ -1,4 +1,4 @@
-import { getUserId } from '../identity/userId';
+import { getToken } from '../auth/tokenStorage';
 import type { ApiErrorBody } from './types';
 
 const REQUEST_TIMEOUT_MS = 15_000;
@@ -34,7 +34,25 @@ export function getApiBaseUrl(): string {
 type RequestOptions = {
   method?: 'GET' | 'POST' | 'DELETE';
   body?: unknown;
+  /** Send the session token (default). Sign-up and login send none. */
+  authenticated?: boolean;
+  /** Report a 401 to the auth layer, which signs the user out (default: when authenticated). */
+  reportUnauthorized?: boolean;
 };
+
+type UnauthorizedHandler = (error: ApiError) => void;
+let unauthorizedHandler: UnauthorizedHandler | null = null;
+
+/**
+ * Registers the auth layer's reaction to an expired or revoked session: any
+ * authenticated request answered with 401 signs the user out. Returns an unsubscribe.
+ */
+export function setUnauthorizedHandler(handler: UnauthorizedHandler): () => void {
+  unauthorizedHandler = handler;
+  return () => {
+    if (unauthorizedHandler === handler) unauthorizedHandler = null;
+  };
+}
 
 /** The server answered, but not with the shape the app expects. */
 export function invalidResponse(): ApiError {
@@ -42,7 +60,10 @@ export function invalidResponse(): ApiError {
 }
 
 /** Performs a JSON request as the current user and throws `ApiError` on any failure. */
-export async function apiRequest<T>(path: string, { method = 'GET', body }: RequestOptions = {}): Promise<T> {
+export async function apiRequest<T>(
+  path: string,
+  { method = 'GET', body, authenticated = true, reportUnauthorized = authenticated }: RequestOptions = {},
+): Promise<T> {
   const controller = new AbortController();
   let timedOut = false;
   const timeout = setTimeout(() => {
@@ -52,12 +73,12 @@ export async function apiRequest<T>(path: string, { method = 'GET', body }: Requ
 
   let response: Response;
   try {
-    const userId = await getUserId();
+    const token = authenticated ? await getToken() : null;
     response = await fetch(`${getApiBaseUrl()}${path}`, {
       method,
       headers: {
         Accept: 'application/json',
-        'X-User-Id': userId,
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
       },
       body: body === undefined ? undefined : JSON.stringify(body),
@@ -78,7 +99,9 @@ export async function apiRequest<T>(path: string, { method = 'GET', body }: Requ
   const payload: unknown = await response.json().catch(() => null);
 
   if (!response.ok) {
-    throw toApiError(response.status, payload);
+    const error = toApiError(response.status, payload);
+    if (response.status === 401 && reportUnauthorized) unauthorizedHandler?.(error);
+    throw error;
   }
   return payload as T;
 }

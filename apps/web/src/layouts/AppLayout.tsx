@@ -1,9 +1,15 @@
+import { useState } from 'react'
 import { Link, Outlet } from 'react-router-dom'
+
+import { useAuth } from '../auth/AuthProvider'
+import { Button } from '../components/ui'
 
 import styles from './AppLayout.module.css'
 
-/** App shell: skip link, top bar and a width-constrained main region. */
+/** App shell: skip link, top bar (with the signed-in account) and the main region. */
 export function AppLayout() {
+  const auth = useAuth()
+
   return (
     <>
       <a href="#main" className={styles.skipLink}>
@@ -21,11 +27,36 @@ export function AppLayout() {
             </svg>
             Inbox
           </Link>
+          {auth.status === 'signedIn' ? <Account name={auth.user.name} email={auth.user.email} /> : null}
         </div>
       </header>
       <main id="main" className={styles.main}>
         <Outlet />
       </main>
     </>
+  )
+}
+
+function Account({ name, email }: { name: string; email: string }) {
+  const auth = useAuth()
+  const [signingOut, setSigningOut] = useState(false)
+
+  const signOut = async () => {
+    if (signingOut) return
+    setSigningOut(true)
+    await auth.signOut()
+  }
+
+  return (
+    <div className={styles.account}>
+      <p className={styles.who}>
+        <span className="visually-hidden">Signed in as </span>
+        <span className={styles.name}>{name}</span>
+        <span className={styles.email}>{email}</span>
+      </p>
+      <Button variant="secondary" loading={signingOut} onClick={() => void signOut()}>
+        Log out
+      </Button>
+    </div>
   )
 }

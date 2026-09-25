@@ -2,7 +2,7 @@
  * Reliability and edge cases, exercised through the real API client with `fetch`
  * mocked, so response checking, timeouts and error mapping are covered end to end.
  */
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import { Text } from 'react-native';
 
@@ -10,7 +10,8 @@ import { ApiError } from '../api/client';
 import { getMessage, listMessages } from '../api/messages';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { navigationRef } from '../navigation/RootNavigator';
-import { renderApp } from '../test-utils/renderApp';
+import { getToken, resetTokenCacheForTests, setToken } from '../auth/tokenStorage';
+import { renderApp, resetStoredSession } from '../test-utils/renderApp';
 import { describeError } from '../utils/errors';
 import { validateMessage } from '../utils/validation';
 
@@ -180,23 +181,29 @@ describe('content edge cases', () => {
 });
 
 describe('reopening the app', () => {
-  it('reuses the stored user id so the same inbox is shown', async () => {
-    await AsyncStorage.clear();
-    // A fresh module instance per load simulates a cold start of the app.
-    const load = (): typeof import('../identity/userId') => {
-      let loaded!: typeof import('../identity/userId');
-      jest.isolateModules(() => {
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
-        loaded = require('../identity/userId');
-      });
-      return loaded;
-    };
+  it('keeps the session token in secure storage across restarts', async () => {
+    await resetStoredSession();
+    await setToken('persisted-token');
 
-    const first = await load().getUserId();
-    const second = await load().getUserId();
+    resetTokenCacheForTests(); // a cold start forgets everything held in memory
 
-    expect(first).toMatch(/^[0-9a-f-]{36}$/);
-    expect(second).toBe(first);
+    expect(await getToken()).toBe('persisted-token');
+    expect(SecureStore.setItemAsync).toHaveBeenCalledWith('inbox.sessionToken', 'persisted-token');
+  });
+});
+
+describe('session expiring while the app is open', () => {
+  it('returns to Log in with an explanation and forgets the token', async () => {
+    serve({
+      'GET /api/v1/messages': () =>
+        reply(401, { error: { code: 'session_expired', message: 'Your session has expired. Please log in again.' } }),
+    });
+
+    await renderApp();
+
+    expect(await screen.findByText('Your session has expired. Please log in again.')).toBeOnTheScreen();
+    expect(screen.getByLabelText('Email')).toBeOnTheScreen();
+    expect(await getToken()).toBeNull();
   });
 });
 

@@ -12,7 +12,7 @@ implemented with a documented limitation.
 | 2 | Optional web solution in React using the same backend | `apps/web` (React + Vite) against the same `/api/v1` | Done | None |
 | 3 | Backend in a language of choice exposing REST endpoints | `backend/app/api/routes/messages.py` (FastAPI) | Done | None |
 | 4 | Messages saved in a database | PostgreSQL; `backend/app/models/message.py`; migration `backend/alembic/versions/…create_users_and_messages.py` | Done | None |
-| 5 | Messages are user-specific; each belongs to a user ID; users only see and manage their own | `messages.user_id` FK; `backend/app/services/messages.py` filters on `user_id`; `backend/app/core/identity.py` | Done | Identification is not authentication (documented simplification) |
+| 5 | Messages are user-specific; each belongs to a user ID; users only see and manage their own | `messages.user_id` FK; `backend/app/services/messages.py` filters on `user_id`; `backend/app/core/identity.py` resolves the signed-in session | Done | Real sign-up/login added in the authentication enhancement |
 | 6 | Landing screen lists the current user's messages | `apps/mobile/src/screens/InboxScreen.tsx`, `apps/web/src/pages/InboxPage.tsx` | Done | None |
 | 7 | Landing screen has a button for creating messages | "+ New message" (and "Write your first message" in the empty state) | Done | None |
 | 8 | Each list item shows the date (`dd.mm.YYYY`) and subject | `MessageListItem.tsx` / `InboxPage.tsx` using `utils/format.ts` (`dd.mm.YYYY, HH:mm`) | Done | None |
@@ -25,7 +25,7 @@ implemented with a documented limitation.
 | 15 | Return to the landing screen after a successful create | `navigation.goBack()` (mobile), `navigate('/', { replace: true })` (web); new message shown immediately | Done | None |
 | 16 | Date created automatically in the backend | `created_at` `DEFAULT now()` (`timestamptz`, UTC session); clients cannot send it (`422`) | Done | None |
 | 17 | Data structure consistent across app, API and database; link to user ID | README §3 and §6; `models/`, `schemas/`, `src/api/types.ts` | Done | None |
-| 18 | User handling: decide how a user is identified; list returns only that user's messages | README §7; `X-User-Id` header; owner-scoped queries | Done | Simplified identity (documented, with the production path) |
+| 18 | User handling: decide how a user is identified; list returns only that user's messages | README §7; session-based sign-in (Bearer on mobile, `httpOnly` cookie on web); owner-scoped queries | Done | Enhanced beyond the brief with real accounts |
 | 19 | Database setup: which DB, schema, created/initialised from a clean checkout | README §6 and §16; `docker-compose.yml` + `alembic upgrade head` | Done | Requires Docker (or any PostgreSQL 17) |
 | 20 | API: routes, request/response shapes, status codes, server-side validation (mandatory fields, 40 chars) | README §9–§11; OpenAPI at `/docs` | Done | None |
 | 21 | Loading behaviour: indicators, empty state, clear error handling | README §14; skeletons, empty states, error states with retry on both clients | Done | None |
@@ -91,8 +91,10 @@ Performed against the real API and database, on both clients, at phone size (375
 
 ## 4. Remaining known limitations
 
-- **No authentication.** `X-User-Id` identifies but does not authenticate. The
-  replacement path (OIDC + JWT behind `get_current_user`) is documented in README §7.
+- **Account lifecycle is minimal.** Sign-up, login and logout exist, but there is no
+  email verification, password reset, login rate limiting or multi-factor
+  authentication yet (README §21). Users created before accounts existed keep their
+  messages but cannot sign in.
 - **Attachments are metadata-only.** There is no upload or storage (the brief marks
   attachments optional).
 - **Not verified on a physical device or native emulator.** Keyboard behaviour, iOS and

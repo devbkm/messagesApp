@@ -3,6 +3,17 @@ import { ApiError } from '../api/client';
 /** Turns any thrown value into a short, user-facing sentence. Never exposes internals. */
 export function describeError(error: unknown): string {
   if (error instanceof ApiError) {
+    switch (error.code) {
+      case 'email_taken':
+        return 'An account with this email already exists. Log in instead, or use another email.';
+      case 'invalid_credentials':
+        return 'Invalid email or password.';
+      case 'session_expired':
+        return 'Your session has expired. Please log in again.';
+      case 'invalid_session':
+      case 'not_authenticated':
+        return 'Please log in again to continue.';
+    }
     if (error.code === 'timeout') {
       return 'The server is taking too long to respond. Please try again.';
     }

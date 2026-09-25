@@ -47,7 +47,7 @@ describe('Message detail', () => {
 
     renderApp('/messages/msg-1')
 
-    expect(screen.getByRole('status')).toHaveTextContent('Loading message…')
+    expect(await screen.findByText('Loading message…')).toBeInTheDocument()
     request.resolve(fullMessage())
     expect(await screen.findByRole('heading', { level: 1, name: 'Quarterly report' })).toBeInTheDocument()
   })

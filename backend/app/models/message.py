@@ -63,6 +63,9 @@ class Message(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
 
     # Optional attachment metadata. File storage itself is outside the current scope.
     attachment_filename: Mapped[str | None] = mapped_column(String(ATTACHMENT_FILENAME_MAX_LENGTH))

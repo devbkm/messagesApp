@@ -31,9 +31,18 @@ class Settings(BaseSettings):
             return [origin.strip() for origin in value.split(",") if origin.strip()]
         return value
 
+    # How long a sign-in lasts before the user has to log in again.
+    session_ttl_days: int = Field(default=14, ge=1, le=90)
+    # Send the web session cookie only over HTTPS. Defaults to on in production.
+    cookie_secure: bool | None = None
+
     @property
     def is_production(self) -> bool:
         return self.environment == "production"
+
+    @property
+    def session_cookie_secure(self) -> bool:
+        return self.is_production if self.cookie_secure is None else self.cookie_secure
 
 
 @lru_cache

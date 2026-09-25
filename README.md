@@ -74,8 +74,8 @@ same backend. The backend exposes **REST endpoints** and stores messages in a
 
 ## 2. Solution overview
 
-- **Backend:** a FastAPI service with four message endpoints, each scoped to the calling
-  user. PostgreSQL stores users and messages, and the schema is created by Alembic
+- **Backend:** a FastAPI service with account endpoints (sign-up, login, logout, current
+  user) and four message endpoints, each scoped to the signed-in user. PostgreSQL stores users and messages, and the schema is created by Alembic
   migrations. Validation happens in Pydantic schemas and again in database constraints.
   Every error uses one consistent JSON shape that never includes internal details.
 - **Mobile app** (primary): Expo / React Native with React Navigation and TanStack
@@ -87,17 +87,20 @@ same backend. The backend exposes **REST endpoints** and stores messages in a
 - **Web app** (optional): React with Vite, React Router and TanStack Query. It has the
   same three pages and states, is responsive from 320 px to desktop, and works fully
   from the keyboard.
-- **User identity:** simplified as the brief allows. Each client generates a random
-  UUID once, stores it, and sends it as `X-User-Id`. All identity handling sits in one
-  function on the server, so it can later be replaced by real authentication (JWT/OAuth)
-  without touching the business logic.
-- **Quality:** 212 automated tests (110 backend, 51 mobile, 51 web). All three parts
+- **Accounts and sign-in:** users sign up with name, email and password, then log in and
+  out. Passwords are hashed with Argon2id. Sessions are server-side, so logout and
+  expiry take effect immediately. The mobile app sends a Bearer token kept in the
+  device's secure storage; the web app uses an `httpOnly` cookie that scripts cannot
+  read. Every message belongs to the signed-in user, and the server enforces that on
+  every request.
+- **Quality:** 307 automated tests (167 backend, 68 mobile, 72 web). All three parts
   pass strict type checks and lint, and the builds and migration drift check succeed.
   A dedicated security, reliability and edge-case review, and a UI/usability review,
   were carried out.
 
 Out of scope: editing messages, uploading attachments (the data model and UI display
-attachment metadata, but no upload endpoint exists), and real authentication.
+attachment metadata, but no upload endpoint exists), and account management beyond
+sign-up, login and logout (no password reset or email verification yet).
 
 ## 3. Architecture
 
@@ -107,7 +110,7 @@ attachment metadata, but no upload endpoint exists), and real authentication.
 │  React Native + TS   │     │  React + TS          │
 │  TanStack Query      │     │  TanStack Query      │
 └──────────┬───────────┘     └──────────┬───────────┘
-           │    JSON over HTTP  /api/v1/…  (X-User-Id header)
+           │  JSON over HTTP  /api/v1/…  (Bearer token │ httpOnly cookie)
            └─────────────┬──────────────┘
                          ▼
         ┌─────────────────────────────────┐
@@ -166,6 +169,8 @@ clients: ownership is implicit in who is asking.
 | Data access | **SQLAlchemy 2.0** (typed ORM) + psycopg 3 | See below |
 | Migrations | **Alembic** | See below |
 | Validation / settings | **Pydantic v2** + pydantic-settings | See below |
+| Passwords | **Argon2id** (`argon2-cffi`) | The current OWASP recommendation: memory-hard, salted per hash, with parameters that can be raised over time (hashes are upgraded on the next login) |
+| Token storage (mobile) | **expo-secure-store** | iOS Keychain / Android Keystore-backed storage instead of plain AsyncStorage |
 | Mobile | **React Native + Expo SDK 57**, TypeScript, React Navigation (native stack) | See below |
 | Server state (both clients) | **TanStack Query v5** | See below |
 | Web | React 19, Vite, React Router, CSS Modules | Fast builds; plain CSS with design tokens rather than a UI kit, so the look is deliberate and matches mobile |
@@ -248,9 +253,9 @@ messagesApp/
 │   │       ├── api/            # HTTP client, endpoint functions + response checks, types, query client
 │   │       ├── components/     # ui/ (design system), messages/ (inbox row), ErrorBoundary
 │   │       ├── hooks/          # TanStack Query hooks (list, detail, create, delete)
-│   │       ├── identity/       # Per-device user id (sent as X-User-Id)
+│   │       ├── auth/           # AuthProvider (session state) + secure token storage
 │   │       ├── navigation/     # Native stack navigator + typed route params
-│   │       ├── screens/        # Inbox, MessageDetail, CreateMessage
+│   │       ├── screens/        # Login, Signup, Startup, Inbox, MessageDetail, CreateMessage
 │   │       ├── theme/          # Design tokens
 │   │       ├── utils/          # Date formatting, validation, user-facing error text
 │   │       ├── test-utils/     # renderApp helper for tests
@@ -260,9 +265,9 @@ messagesApp/
 │           ├── api/            # Same responsibilities as mobile
 │           ├── components/ui/  # Design system (CSS Modules), inline SVG icons
 │           ├── hooks/          # TanStack Query hooks
-│           ├── identity/       # Per-browser user id
+│           ├── auth/           # AuthProvider (session state) + route guards
 │           ├── layouts/        # App shell: skip link, header, main
-│           ├── pages/          # Inbox, MessageDetail, CreateMessage, NotFound, RouteError (+ tests)
+│           ├── pages/          # Login, Signup, Inbox, MessageDetail, CreateMessage, NotFound, RouteError (+ tests)
 │           ├── styles/         # Tokens + global styles
 │           ├── utils/          # Formatting, validation, error text
 │           ├── test/           # Vitest setup + renderApp helper
@@ -270,14 +275,14 @@ messagesApp/
 ├── backend/
 │   ├── alembic/                # Migration environment + versions/
 │   ├── app/
-│   │   ├── api/                # Routers: /health, /api/v1/messages
-│   │   ├── core/               # Settings, error handling, current-user resolution
+│   │   ├── api/                # Routers: /health, /api/v1/auth, /api/v1/messages
+│   │   ├── core/               # Settings, errors, password hashing, current-user resolution
 │   │   ├── db/                 # Declarative base (naming convention), engine/session
-│   │   ├── models/             # User, Message
+│   │   ├── models/             # User, Message, UserSession
 │   │   ├── schemas/            # Pydantic request/response/error models
-│   │   ├── services/           # Business logic (user provisioning, messages)
+│   │   ├── services/           # Business logic (accounts and sessions, messages)
 │   │   └── main.py             # App factory, middleware (security headers, body limit, CORS)
-│   ├── tests/                  # pytest suites (models, services, API, hardening, health)
+│   ├── tests/                  # pytest suites (auth, ownership, migrations, API, hardening, …)
 │   ├── requirements.txt        # Runtime dependencies (pinned)
 │   └── requirements-dev.txt    # + test and quality tools
 ├── docs/FINAL_REVIEW.md        # Final requirement checklist and review
@@ -288,23 +293,36 @@ messagesApp/
 ## 6. Database model
 
 ```
-users                                   messages
-─────────────────────────────           ──────────────────────────────────────────────
-id          uuid  PK                    id                       uuid  PK
-created_at  timestamptz  NOT NULL  ◄──┐ user_id                  uuid  NOT NULL  FK → users.id (ON DELETE CASCADE)
-                                      └ subject                  varchar(40)  NOT NULL
-                                        text                     text  NOT NULL
-                                        created_at               timestamptz  NOT NULL  DEFAULT now()
-                                        attachment_filename      varchar(255)  NULL
-                                        attachment_content_type  varchar(127)  NULL
-                                        attachment_size_bytes    integer  NULL
+users                                        messages
+─────────────────────────────────────        ──────────────────────────────────────────────
+id             uuid  PK                      id                       uuid  PK
+name           varchar(100)  NULL ¹     ◄──┐ user_id                  uuid  NOT NULL  FK → users.id (ON DELETE CASCADE)
+email          varchar(254)  NULL ¹  UNIQUE│ subject                  varchar(40)  NOT NULL
+password_hash  varchar(255)  NULL ¹        │ text                     text  NOT NULL
+created_at     timestamptz  NOT NULL       │ created_at               timestamptz  NOT NULL  DEFAULT now()
+updated_at     timestamptz  NOT NULL       │ updated_at               timestamptz  NOT NULL  DEFAULT now()
+                                           │ attachment_filename      varchar(255)  NULL
+sessions                                   │ attachment_content_type  varchar(127)  NULL
+─────────────────────────────────────      │ attachment_size_bytes    integer  NULL
+id          uuid  PK                       │
+user_id     uuid  NOT NULL  FK → users.id ─┘ (ON DELETE CASCADE)
+token_hash  varchar(64)  NOT NULL  UNIQUE     SHA-256 of the session token, never the token
+created_at  timestamptz  NOT NULL
+expires_at  timestamptz  NOT NULL
 
-Index: ix_messages_user_id_created_at (user_id, created_at DESC)
+Indexes: ix_messages_user_id_created_at (user_id, created_at DESC), ix_sessions_user_id
+¹ All three set, or all three NULL (accounts created before sign-up existed; see Migration)
 ```
 
-- **Link to the user:** `messages.user_id` is `NOT NULL` with a foreign key to
-  `users.id`, so a message cannot exist without an owner. Deleting a user deletes their
-  messages.
+- **Link to the user:** one user has many messages. `messages.user_id` is `NOT NULL`
+  with a foreign key to `users.id`, so a message cannot exist without an owner. Deleting
+  a user deletes their messages and sessions.
+- **Accounts:** `email` is unique and stored in lower case (a check constraint enforces
+  it), so `Ada@Example.com` and `ada@example.com` are the same account. Only an Argon2id
+  hash of the password is stored.
+- **Sessions:** one row per signed-in device. Only the SHA-256 digest of the session
+  token is stored, so a database leak does not expose usable tokens. Logout deletes the
+  row, and expired rows are rejected and removed.
 - **UUID primary keys** are generated server-side (Python `uuid4`, with
   `gen_random_uuid()` as the database default). They are not sequential, so ids reveal
   nothing about other users' data or volume.
@@ -322,74 +340,115 @@ Index: ix_messages_user_id_created_at (user_id, created_at DESC)
 - **Attachments:** only metadata columns exist; see
   [Assumptions](#20-assumptions) and
   [Production improvements](#21-production-improvements).
-- **Constraint names** follow a fixed convention (`pk_`, `fk_`, `ck_`, `ix_`), so
+- **Constraint names** follow a fixed convention (`pk_`, `fk_`, `ck_`, `uq_`, `ix_`), so
   migrations are deterministic and constraint errors are easy to trace.
+
+**Migration strategy for existing data.** Accounts were added by a second migration
+(`add_accounts_and_sessions`) that is purely additive:
+- `messages.user_id` already pointed at `users` with `NOT NULL`, so every existing
+  message already had an owner. Nothing is deleted or reassigned.
+- Users created before sign-up existed were identified by id alone. Their new `name`,
+  `email` and `password_hash` columns stay `NULL`: they keep their messages but cannot
+  sign in, and no session can ever be issued for them. A check constraint allows either
+  all three credentials or none, so every new account is complete.
+- `updated_at` is added with a `now()` default, which fills existing rows.
+- The downgrade removes only what the migration added. A test migrates a database
+  holding a pre-accounts user and message up and back down, and checks both survive.
 
 ## 7. User handling
 
-**How a user is identified.**
-- Each client creates a random UUID once and sends it with every request in the
-  `X-User-Id` header:
-  - **mobile:** `expo-crypto` generates it and AsyncStorage keeps it;
-  - **web:** `crypto.randomUUID()` generates it (with a `getRandomValues` fallback on
-    plain-`http` origins) and `localStorage` keeps it.
-- On the server, `get_current_user` validates the header (missing or not a UUID → `401`)
-  and returns a `CurrentUser`.
-- It creates the `users` row on first use, with `INSERT … ON CONFLICT DO NOTHING`, which
-  is safe when two first requests arrive together.
-- The same inbox appears after restarting the app or reloading the page. A different
-  device or browser is a different user.
+**Sign-up and login.**
+- `POST /api/v1/auth/signup` takes name, email, password and password confirmation.
+  - It validates them: name required, a valid and unused email, a password of 8–128
+    characters, and a matching confirmation.
+  - It creates the account and **signs the user in straight away**, so no second login
+    is needed.
+- `POST /api/v1/auth/login` checks the email and password.
+  - An unknown email and a wrong password get the **same** answer, "Invalid email or
+    password.", and take the same time: the hash check also runs for unknown emails. So
+    responses don't reveal which emails are registered.
+- `POST /api/v1/auth/logout` deletes the session on the server. `GET /api/v1/auth/me`
+  returns the signed-in user.
 
-**Why authentication was simplified.** The brief explicitly allows keeping user handling
-simple and asks for the choice to be explained. A login system would add accounts,
-password or identity-provider flows, token storage and session expiry. None of that
-shows the parts the exercise focuses on: the data model, per-user isolation, the API
-contract and UI states. The simplified header therefore **identifies** the caller but
-does **not authenticate** them: anyone who knows a UUID can act as that user.
+**Sessions.** A successful sign-up or login creates a server-side session with a
+random 256-bit token, valid for 14 days (`SESSION_TTL_DAYS`). The token reaches the
+client in one of two ways:
 
-**How production authentication would work.** Identity is isolated behind one seam:
-services, models and routes depend only on `CurrentUser`, never on how it was obtained.
-Moving to real authentication means replacing the body of `get_current_user`:
+| Client | Transport | Storage |
+| --- | --- | --- |
+| Mobile | Returned in the response body; sent back as `Authorization: Bearer <token>` | `expo-secure-store` (Keychain / Keystore). Never AsyncStorage |
+| Web | Set as the `inbox_session` cookie: `HttpOnly`, `SameSite=Lax`, `Path=/api/v1`, `Secure` in production. Never in the response body | The browser's cookie jar. Scripts cannot read it, so an XSS bug cannot steal it |
 
-1. Users sign in with an OpenID Connect provider (e.g. Auth0, Cognito, Keycloak or
-   Entra ID):
-   - **mobile:** Authorization Code + PKCE via `expo-auth-session`, with tokens kept in
-     `expo-secure-store`;
-   - **web:** a backend-for-frontend that keeps tokens in an `httpOnly`, `Secure`,
-     `SameSite` cookie, or Authorization Code + PKCE.
-2. Clients send `Authorization: Bearer <access token>` instead of `X-User-Id`.
-3. `get_current_user` verifies the JWT against the provider's published keys (JWKS). It
-   checks the signature, issuer, audience and expiry, then maps the token's `sub` to a
-   `users` row, for example through an `external_subject` column added by a new
-   migration.
-4. Nothing else changes: the ownership filters in the services already enforce
-   isolation for whatever `CurrentUser` they receive.
+The cookie is only honoured when the request also carries `X-Auth-Transport: cookie`.
+A malicious site cannot add that custom header to a request without a CORS preflight,
+and the preflight fails for origins outside `CORS_ORIGINS`. That makes the cookie
+useless for cross-site request forgery.
+
+**Clients never decide on their own that someone is signed in.**
+- **On start-up** both apps ask the server (`GET /auth/me`).
+  - A valid session opens the inbox.
+  - A `401` goes to Log in, with "Your session has expired" when that is the reason.
+  - Network trouble shows **Try again** rather than logging the user out.
+- **Afterwards**, any `401` from the API (an expired or revoked session) clears the
+  local session and returns to Log in with an explanation.
+- **Signing in or out** clears all cached data, so one user never sees another's
+  messages on a shared device.
+
+**Protected screens.**
+- **Mobile:** the navigator only contains the inbox screens when signed in, and only
+  Log in / Sign up when signed out, so there is no way to reach a protected screen.
+- **Web:** route guards send signed-out visitors from `/`, `/inbox`,
+  `/messages/new` and `/messages/:id` to `/login`, and back to where they were going
+  after signing in. `/login` and `/signup` send signed-in users to the inbox.
+- **Both:** these guards are for navigation only. The API enforces the same rules
+  independently.
+
+**Why a self-hosted session instead of an identity provider.** The enhancement asked
+for email/password sign-up in the existing app. Server-side sessions give immediate
+logout and expiry with no extra infrastructure. The design keeps the old seam: services
+and routes depend only on `CurrentUser`, produced by one function, `get_current_user`
+(`app/core/identity.py`).
+
+**Moving to an identity provider (OIDC/JWT) later.** This means replacing only the body
+of `get_current_user`:
+- verify the provider's JWT against its published keys (JWKS);
+- check the issuer, audience and expiry;
+- map the token's `sub` to a `users` row, for example via a new `external_subject`
+  column.
+
+The message services, ownership rules and tests stay as they are.
 
 **How user isolation is enforced.**
-- **Ownership comes from identity, never from input.** `create_message` sets `user_id`
+- **Ownership comes from the session, never from input.** `create_message` sets `user_id`
   from `CurrentUser`. `MessageCreate` has no `user_id` field, and sending one is rejected
-  (`422`).
+  (`422`). The old `X-User-Id` header no longer identifies anyone.
 - **Every read and delete filters on both keys:** `WHERE id = :id AND user_id = :owner`.
   A message owned by someone else is therefore indistinguishable from a missing one,
   and both return the same `404` body. The API never confirms that another user's
   message exists.
 - **The list query filters on `user_id`**, and responses never include `user_id`.
 - **The database backs this up** with the `NOT NULL` foreign key.
-- **Tests** cover reading, deleting and listing across users with any id format, and
-  check that another user's `404` is byte-identical to a missing message.
+- **Tests** (`tests/test_ownership.py`) cover the exact scenario. User A creates a
+  message; B does not see it in their inbox, cannot open it by id, and cannot delete it;
+  new messages always belong to the signed-in user; and every protected endpoint rejects
+  unauthenticated requests.
 
 ## 8. Security model
 
 | Concern | Measure |
 | --- | --- |
-| Isolation | Owner-scoped queries; uniform `404`; ownership only from identity (see [User handling](#7-user-handling)) |
+| Authentication | Server-side sessions; Argon2id password hashes; tokens stored only as SHA-256 digests; logout and expiry enforced on the server |
+| Credentials in transit and at rest | Mobile: Bearer token in secure storage. Web: `HttpOnly` cookie invisible to scripts, `SameSite=Lax`, `Secure` in production, only accepted with `X-Auth-Transport: cookie` (CSRF protection) |
+| Account enumeration | Login gives one message and one timing for unknown emails and wrong passwords |
+| Secrets never exposed | Responses never contain passwords or hashes; the password is never logged (a test checks responses and logs) |
+| Isolation | Owner-scoped queries; uniform `404`; ownership only from the session (see [User handling](#7-user-handling)) |
 | Server-owned fields | `id`, `user_id` and `created_at` are generated server-side; sending them is rejected with `422` (`extra="forbid"`) |
 | Injection | SQLAlchemy ORM with bound parameters only. The only raw SQL fragments are constant DDL (defaults, check constraints) |
 | Input safety | Control characters (e.g. NUL, which PostgreSQL cannot store) are rejected with `422`; invisible-only subjects/text are rejected; lengths count Unicode characters |
 | Request size | Bodies over 256 KiB → `413`; bodies without `Content-Length` → `411`, before parsing |
 | Error disclosure | One error envelope; stack traces, SQL, driver messages and submitted values never leave the server; unexpected errors are logged server-side and answered with a generic `500`/`503` |
 | Transport headers | `Cache-Control: no-store` on API responses (private data), `X-Content-Type-Options: nosniff` |
-| CORS | Only origins listed in `CORS_ORIGINS`; methods `GET/POST/DELETE`; headers `Content-Type`, `X-User-Id` |
+| CORS | Only origins listed in `CORS_ORIGINS`, with credentials allowed for the web cookie; methods `GET/POST/DELETE`; headers `Content-Type`, `Authorization`, `X-Auth-Transport` |
 | Configuration | Settings only from environment variables; `DATABASE_URL` has no default; `/docs` and `/openapi.json` are disabled when `ENVIRONMENT=production` |
 | Secrets | `.env` files are git-ignored; only `.env.example` files are committed. The single credential in the repo is the documented dev-only database password in `docker-compose.yml`, and the database port is bound to `127.0.0.1` |
 | Clients | Receive only the public API URL (`EXPO_PUBLIC_API_URL` / `VITE_API_URL`). The built web bundle and the compiled Android bundle were scanned: no database URL, password or backend setting. No `console` logging; React escapes all text, so markup in a subject is shown literally |
@@ -402,23 +461,33 @@ fixes for them under [production improvements](#21-production-improvements).
 
 Base path `/api/v1`, JSON in and out. The machine-readable contract is at
 `/openapi.json`, with interactive docs at `/docs` (both disabled in production). In
-Swagger UI, **Authorize** sets `X-User-Id`.
+Swagger UI, **Authorize** takes a Bearer token from sign-up or login.
 
 | Method | Path | Success | Errors |
 | --- | --- | --- | --- |
+| `POST` | `/api/v1/auth/signup` | `201` user + session (token, or cookie for the web) | `409`, `422`, `503` |
+| `POST` | `/api/v1/auth/login` | `200` user + session | `401`, `422`, `503` |
+| `POST` | `/api/v1/auth/logout` | `204`; ends the session and clears the cookie | none |
+| `GET` | `/api/v1/auth/me` | `200` the signed-in user | `401`, `503` |
 | `GET` | `/api/v1/messages` | `200` the caller's messages, newest first | `401`, `503` |
 | `GET` | `/api/v1/messages/{id}` | `200` the full message | `401`, `404`, `422`, `503` |
 | `POST` | `/api/v1/messages` | `201` the created message + `Location` header | `401`, `411`, `413`, `422`, `503` |
 | `DELETE` | `/api/v1/messages/{id}` | `204` no body | `401`, `404`, `422`, `503` |
 | `GET` | `/health` | `200` `{"status": "ok"}`, no identity or database needed | none |
 
-Every `/api/v1/messages` request needs `X-User-Id: <uuid>`.
+Every `/api/v1/messages` request and `/auth/me` needs a session: `Authorization: Bearer
+<token>`, or the web cookie together with `X-Auth-Transport: cookie`. There is no update
+endpoint: messages cannot be edited (`PUT` returns `405`).
 
 | Status | `code` | When |
 | --- | --- | --- |
-| `401` | `unauthorized` | `X-User-Id` missing or not a UUID |
+| `401` | `not_authenticated` | No session sent |
+| `401` | `invalid_session` | Unknown, tampered or logged-out session token |
+| `401` | `session_expired` | The session is past its expiry (it is also deleted) |
+| `401` | `invalid_credentials` | Login with an unknown email or a wrong password (same response for both) |
 | `404` | `not_found` | The message does not exist **or belongs to another user** (identical response) |
 | `405` | `method_not_allowed` | Unsupported method |
+| `409` | `email_taken` | Sign-up with an email that already has an account (case-insensitive) |
 | `411` | `length_required` | A body without `Content-Length` |
 | `413` | `payload_too_large` | Body larger than 256 KiB |
 | `422` | `validation_error` | Invalid body, malformed JSON, unknown field, or an `{id}` that is not a UUID; `details` lists problems per field |
@@ -427,11 +496,38 @@ Every `/api/v1/messages` request needs `X-User-Id: <uuid>`.
 
 ## 10. Request and response examples
 
+**Sign up** (native client; the web adds `X-Auth-Transport: cookie` and receives the
+token as an `httpOnly` cookie instead of in the body)
+
+```http
+POST /api/v1/auth/signup
+Content-Type: application/json
+
+{ "name": "Ada Lovelace", "email": "ada@example.com", "password": "correct horse battery", "password_confirmation": "correct horse battery" }
+```
+
+```http
+HTTP/1.1 201 Created
+
+{
+  "user": { "id": "1717dde8-ab26-419a-8cf4-a92083420786", "name": "Ada Lovelace", "email": "ada@example.com", "created_at": "2026-09-25T15:19:19.150487Z" },
+  "token": "-Z98_oFs6RnFfu6hYQorFHDr96zOA63FCaE5bHUVxiY",
+  "expires_at": "2026-10-09T15:19:19.162010Z"
+}
+```
+
+**Log in:** `POST /api/v1/auth/login` with `{ "email": "...", "password": "..." }` → `200`
+with the same shape. Wrong credentials → `401`:
+
+```json
+{ "error": { "code": "invalid_credentials", "message": "Invalid email or password." } }
+```
+
 **Create a message**
 
 ```http
 POST /api/v1/messages
-X-User-Id: 3f1c6a0e-8d2b-4c9a-9f3e-2b7d5a1c4e60
+Authorization: Bearer -Z98_oFs6RnFfu6hYQorFHDr96zOA63FCaE5bHUVxiY
 Content-Type: application/json
 
 { "subject": "Example", "text": "Message content" }
@@ -494,10 +590,14 @@ time zone as `dd.mm.YYYY, HH:mm`.
 { "error": { "code": "not_found", "message": "Message not found." } }
 ```
 
-**Try it with curl**
+**Try it with curl:** sign up, then use the returned token.
 
 ```bash
-curl -X POST http://localhost:8000/api/v1/messages -H "X-User-Id: 3f1c6a0e-8d2b-4c9a-9f3e-2b7d5a1c4e60" -H "Content-Type: application/json" -d '{"subject":"Hello","text":"First message"}'
+curl -X POST http://localhost:8000/api/v1/auth/signup -H "Content-Type: application/json" -d '{"name":"Ada","email":"ada@example.com","password":"correct horse battery","password_confirmation":"correct horse battery"}'
+```
+
+```bash
+curl -X POST http://localhost:8000/api/v1/messages -H "Authorization: Bearer <token>" -H "Content-Type: application/json" -d '{"subject":"Hello","text":"First message"}'
 ```
 
 ## 11. Validation
@@ -508,7 +608,12 @@ curl -X POST http://localhost:8000/api/v1/messages -H "X-User-Id: 3f1c6a0e-8d2b-
 | `text` | Required string; after trimming, 1–10,000 characters; line breaks and tabs kept; other control characters rejected; at least one visible character |
 | Other body fields | Rejected, including `id`, `user_id`, `created_at` |
 | `{id}` | Must be a UUID |
-| `X-User-Id` | Required UUID (`401` otherwise) |
+| Sign-up `name` | Required; 1–100 characters after trimming; a single line |
+| Sign-up `email` | Required; a valid address (at most 254 characters); normalised to lower case; must not be registered yet (`409`) |
+| Sign-up `password` | Required; 8–128 characters (not trimmed) |
+| Sign-up `password_confirmation` | Must equal `password` (reported on this field) |
+| Login | `email` and `password` required |
+| Session | Required on message endpoints and `/auth/me` (`401` otherwise) |
 | Body | At most 256 KiB, with `Content-Length` |
 
 **Where each rule is enforced:**
@@ -531,15 +636,21 @@ curl -X POST http://localhost:8000/api/v1/messages -H "X-User-Id: 3f1c6a0e-8d2b-
 
 ## 12. Mobile UI
 
-Three screens on a native stack (`src/navigation/RootNavigator.tsx`):
+Screens on a native stack (`src/navigation/RootNavigator.tsx`). Signed out, only **Log in**
+and **Create account** exist; signed in, only the three inbox screens do. While the stored
+session is being confirmed, a start-up screen shows "Checking your sign-in…" (or
+**Try again** if the server is unreachable).
 
 | Screen | Content |
 | --- | --- |
+| **Log in** | Email and password with visible labels, email keyboard, password managers' autofill hints; inline validation; "Invalid email or password."; a session-expired notice when relevant; "Create an account" |
+| **Create account** | Name, email, password (hint: at least 8 characters) and confirmation; inline validation including "Passwords do not match."; "email already registered" shown on the email field; signs straight in |
 | **Inbox** (landing) | See the details below |
 | **Message detail** (separate screen) | See the details below |
 | **Create message** | See the details below |
 
 **Inbox (landing).**
+- An account bar at the top shows the signed-in user's name and email, with **Log out**.
 - A virtualised `FlatList` of cards, newest first, headed "N messages · newest first".
 - Each card shows the **subject** prominently (wrapping to two lines) and the **date and
   time** (`dd.mm.YYYY, HH:mm`) below it, plus a paperclip "Attachment" marker when
@@ -597,10 +708,22 @@ React Router pages that mirror the mobile screens:
 
 | Route | Page |
 | --- | --- |
-| `/` | **Inbox**: see the details below |
+| `/login` | **Log in** (signed-out visitors only) |
+| `/signup` | **Create account** (signed-out visitors only) |
+| `/` (also `/inbox`) | **Inbox**: see the details below |
 | `/messages/:id` | **Message detail**: see the details below |
 | `/messages/new` | **Create message**: see the details below |
 | `*` | **Not found** page; an unexpected render error shows a recovery page instead of a blank screen |
+
+**Log in and Create account.**
+- These are the same forms as on mobile, with `<label>`led fields, `type="email"` and
+  `type="password"`, and `autocomplete` hints (`email`, `current-password`,
+  `new-password`) for password managers.
+- They show inline errors and a busy "Logging in…" / "Creating account…" button that
+  ignores repeat submissions, and they link to each other.
+- After logging in, the app returns to the page the visitor originally asked for.
+- **Header:** when signed in, it shows the user's name and email (just the name on
+  phones) and **Log out**.
 
 **Inbox (`/`).**
 - The heading reads "Inbox" with "N messages · newest first" below it.
@@ -670,6 +793,10 @@ React Router pages that mirror the mobile screens:
 | Create in progress / failed | "Creating…" busy button (duplicates ignored); on failure the input is kept, a banner explains, retry is one tap |
 | Delete in progress / failed | Busy dialog with both buttons disabled; on failure the message stays and the button becomes **Try again**; a `404` (already deleted elsewhere) counts as done |
 | Unexpected render error | Mobile error boundary or web route error page with a way to recover; no technical details shown |
+| Checking the session on start-up | "Checking your sign-in…"; if the server is unreachable, "Couldn't connect" with **Try again** (the user is not logged out) |
+| Logging in / creating an account | Busy button ("Logging in…" / "Creating account…"), repeat submissions ignored, fields read-only |
+| Wrong credentials / email taken | "Invalid email or password." banner / message on the email field; input kept |
+| Session expired or revoked | Back to Log in with "Your session has expired. Please log in again."; cached data cleared |
 
 Every user-facing error message is a short plain sentence (`describeError`). Raw error
 text and stack traces are never displayed.
@@ -725,8 +852,14 @@ cp .env.example .env.local
 npm run dev
 ```
 
-Open <http://localhost:5173>. This origin is already listed in the backend's
+Open <http://localhost:5173>. In development the Vite server proxies `/api` to the
+backend (`http://127.0.0.1:8000`), so the web app and API share one origin and the
+session cookie is first-party. Leave `VITE_API_URL` empty for this. For a deployment
+where the API is on another origin, set `VITE_API_URL` and list the site in the API's
 `CORS_ORIGINS`.
+
+Then open the app and **create an account**: every inbox now belongs to a signed-in
+user.
 
 > **Windows note:** the example URLs use `127.0.0.1` rather than `localhost`, because on
 > some Windows machines `localhost` resolves to IPv6 first and the database connection
@@ -741,8 +874,10 @@ A clean checkout needs two commands, both shown above:
    `--wait` returns once the health check passes. It checks over TCP, so it is not
    fooled by the image's temporary first-start server.
 2. `alembic upgrade head` (in `backend/`) applies every migration in
-   `backend/alembic/versions/` in order. It creates the `users` and `messages` tables,
-   their constraints and the inbox index. It is safe to re-run and reads `DATABASE_URL`
+   `backend/alembic/versions/` in order. It creates the `users`, `messages` and
+   `sessions` tables, their constraints and indexes. On a database created before
+   accounts existed, it adds the new columns without touching existing data (see
+   [Migration strategy](#6-database-model)). It is safe to re-run and reads `DATABASE_URL`
    from the environment / `backend/.env`.
 
 **Useful commands:**
@@ -751,7 +886,7 @@ A clean checkout needs two commands, both shown above:
 - `alembic downgrade base` removes the schema.
 - `docker compose down -v` deletes the local database volume entirely.
 
-There is no seed data; the first request from a client creates its user automatically.
+There is no seed data; create an account from either client (or `POST /auth/signup`).
 The test suite uses its own `inbox_test` database, which it creates and migrates
 automatically.
 
@@ -763,8 +898,11 @@ automatically.
 | | `CORS_ORIGINS` | Comma-separated browser origins allowed to call the API |
 | | `ENVIRONMENT` | `development`, `test` or `production` (production disables `/docs`) |
 | | `LOG_LEVEL` | Python log level (default `INFO`) |
+| | `SESSION_TTL_DAYS` | How long a sign-in lasts (default 14) |
+| | `COOKIE_SECURE` | Send the web cookie over HTTPS only; defaults to on in production, off otherwise |
 | `apps/mobile/.env` | `EXPO_PUBLIC_API_URL` | API base URL used by the app |
-| `apps/web/.env.local` | `VITE_API_URL` | API base URL used by the web app |
+| `apps/web/.env.local` | `VITE_API_URL` | API origin for the web app; empty = same origin (the dev server proxies `/api`) |
+| shell (optional) | `API_PROXY_TARGET` | Where the web dev server proxies `/api` (default `http://127.0.0.1:8000`) |
 | shell (optional) | `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | Override the compose defaults |
 | shell (optional) | `TEST_DATABASE_URL` | Point the backend tests at another database |
 
@@ -776,15 +914,29 @@ the only client setting.
 
 | Suite | Command (in the folder) | Tests | Covers |
 | --- | --- | --- | --- |
-| Backend | `pytest` (database container running) | 110 | See below |
-| Mobile | `npm test` | 51 | See below |
-| Web | `npm test` | 51 | See below |
+| Backend | `pytest` (database container running) | 167 | See below |
+| Mobile | `npm test` | 68 | See below |
+| Web | `npm test` | 72 | See below |
 
-**Backend (110 tests).**
+**Backend (167 tests).**
 - They run against real PostgreSQL. The migrations run up, down and up again first,
   then each test runs in a transaction that is rolled back afterwards.
+- **Authentication (`test_auth.py`):**
+  - sign-up (including sign-in without a second login, and hash-only storage);
+  - duplicate emails, case-insensitively;
+  - every invalid or missing field, including a password mismatch;
+  - login success, and the identical answer for wrong password and unknown email;
+  - logout, including per-device sessions;
+  - persistence across app restarts, expired and tampered sessions;
+  - cookie mode, the CSRF header rule and the `Secure` flag in production;
+  - no passwords or hashes in responses or logs;
+  - the account constraints in the database.
+- **Ownership (`test_ownership.py`):** the User A / User B scenarios, forged owners,
+  no edit endpoint, and unauthenticated access to every protected endpoint.
+- **Migrations (`test_migrations.py`):** pre-accounts data survives the upgrade and
+  downgrade.
 - **Models:** constraints, the user relationship and cascade.
-- **Services:** create and user provisioning.
+- **Services:** message creation, session resolution, and token hashing.
 - **API:**
   - all endpoints and status codes;
   - user isolation;
@@ -794,11 +946,11 @@ the only client setting.
   - the OpenAPI contract.
 - **Hardening:**
   - control and invisible characters, Unicode and 40-emoji subjects, multiline text;
-  - request size limits and identity header formats;
+  - request size limits, oversized tokens, and the old user-id header being ignored;
   - many messages;
   - CORS and production settings.
 
-**Mobile (51 tests).**
+**Mobile (68 tests).**
 - Jest with React Native Testing Library renders the whole app with navigation, using a
   mocked API module or a mocked `fetch`.
 - **Screens:** inbox content and accessible names; loading, empty and error states with
@@ -806,17 +958,33 @@ the only client setting.
 - **Delete:** confirmation, cancel, progress, duplicate taps, success and failure.
 - **Create and detail:** form validation, create success and failure, server field
   errors, the discard-draft guard, and navigation to the detail screen.
+- **Auth:**
+  - start-up without a session, with a confirmed one, an expired one, and an
+    unreachable server;
+  - login validation, success, wrong credentials and duplicate taps;
+  - sign-up validation, instant sign-in and "email taken";
+  - logout;
+  - no data leaking between two users;
+  - the token persisting in secure storage, and a session expiring mid-use.
 - **Reliability:** timeouts, malformed responses, messages deleted elsewhere, a
-  virtualised long list, the user id persisting across restarts, and the error
-  boundary.
+  virtualised long list, and the error boundary.
 
-**Web (51 tests).**
+**Web (72 tests).**
 - Vitest with Testing Library renders the real routes.
 - **Screens and states:** the same screen, state and failure scenarios as mobile.
 - **Keyboard:** Tab order, the skip link, and focus after deleting.
 - **History:** Back from the inbox after creating never reopens the submitted form.
 - **Dialog:** its accessible name and description.
-- **Identity:** the user id with no secure context and with blocked storage.
+- **Auth:**
+  - route protection for every inbox route, and the return to the requested page after
+    login;
+  - redirects away from /login and /signup when signed in;
+  - the header account area, and the start-up check with retry;
+  - login and sign-up validation, errors and duplicate submissions;
+  - logout, and no data leaking between users;
+  - a full login through the real API client: the cookie is always sent with the
+    transport header, no token is used, and browser storage stays empty;
+  - a session expiring mid-use.
 - **Errors:** the route error page.
 
 **Static checks and builds**
@@ -833,17 +1001,37 @@ the only client setting.
   available.
 - Create, view and delete; the API going down mid-delete and recovering with **Try
   again**; keyboard-only use of the web app.
+- Accounts, end to end in the web app against the real API and database:
+  - sign-up validation, then instant sign-in;
+  - the session surviving a reload, with the cookie invisible to scripts and nothing in
+    browser storage;
+  - logout ending the server session;
+  - a second user who cannot see, open or delete the first user's message by id;
+  - a duplicate email refused, a wrong password rejected, and logging back in;
+  - Argon2id hashes and token digests in the database, and the pre-existing ID-only
+    users preserved.
 - The production bundles were scanned for secrets.
 
 **Not verified:** the mobile app has not been run on a physical device or a native
-emulator. Behaviour when the on-screen keyboard opens, the iOS/Android back gestures and
+emulator (its sign-in flows are covered by the automated tests, and the backend flows
+were verified end to end through the web app). Behaviour when the on-screen keyboard opens, the iOS/Android back gestures and
 the app icon on a home screen should get a quick check in Expo Go.
 
 ## 19. Architectural trade-offs
 
-- **Header-based identity instead of authentication.** This keeps the exercise focused,
-  as described in [User handling](#7-user-handling). The cost is that the API trusts
-  whoever holds a UUID. The `get_current_user` seam keeps the fix local.
+- **Self-hosted sessions instead of an identity provider or JWTs.**
+  - Server-side sessions make logout and expiry immediate, and need nothing beyond
+    PostgreSQL.
+  - The cost is a database lookup per request, which is negligible here. There is also
+    no single sign-on, password reset or email verification yet.
+  - The `get_current_user` seam keeps a later move to OIDC local.
+- **Two token transports.** Mobile keeps a Bearer token in secure storage, since native
+  apps have no cookie-based CSRF risk and secure storage is the platform standard. The
+  web uses an `httpOnly` cookie so scripts can never read the token. The same session
+  table and the same `get_current_user` serve both.
+- **Old ID-only users are kept, not migrated to accounts.** They cannot sign in, since
+  they never had credentials. Deleting them would have destroyed data; inventing
+  credentials would have been insecure.
 - **One REST API shared by web and mobile.**
   - All business rules (ownership, validation, timestamps) live in one place, and both
     clients behave identically because they consume the same contract.
@@ -889,8 +1077,11 @@ the app icon on a home screen should get a quick check in Expo Go.
 
 ## 20. Assumptions
 
-- A user is identified by an opaque UUID and is created on first use. Each device or
-  browser is its own user until real sign-in exists.
+- Emails are case-insensitive for sign-in (stored in lower case).
+- A session lasts 14 days, and each device has its own session. Logging out on one
+  device does not affect the others.
+- A password needs 8–128 characters and has no composition rules, following NIST
+  800-63B. Breached-password checks are a production improvement.
 - The brief's date format `dd.mm.YYYY` is shown in the device's local time zone. The
   time (`HH:mm`) is added because several messages can share a date. Messages are
   ordered newest first.
@@ -902,17 +1093,24 @@ the app icon on a home screen should get a quick check in Expo Go.
   attachment **metadata** (file name, type and size), but **uploading and storing files
   is not implemented**: there is no upload endpoint, and the create form has only
   subject and text.
-- Messages cannot be edited (not requested), and deletion is permanent.
+- Messages cannot be edited (the product decision for this enhancement: no update
+  endpoint or UI), and deletion is permanent.
 - The user interface is in English.
 
 ## 21. Production improvements
 
 These are **not implemented**; they are the natural next steps before real use:
 
-- **Authentication:** OIDC sign-in with JWT verification behind `get_current_user`, as
-  described in [User handling](#7-user-handling). Tokens would go in `expo-secure-store`
-  on mobile and `httpOnly` cookies (or a backend-for-frontend) on the web. It would be
-  followed by per-user authorisation tests using real tokens.
+- **Account lifecycle:** email verification, password reset by emailed one-time link,
+  changing the password (which should end other sessions), account deletion, and "log
+  out everywhere".
+- **Login protection:** rate limits and progressive delays per account and per IP,
+  breached-password checks (e.g. against the Have I Been Pwned range API), and optional
+  multi-factor authentication.
+- **Identity provider (optional):** OIDC/JWT sign-in behind `get_current_user` (see
+  [User handling](#7-user-handling)) if single sign-on is needed.
+- **Session hygiene:** a scheduled job removing expired sessions (today they are removed
+  when used or at the owner's next login), and sliding expiry if desired.
 - **HTTPS everywhere:** TLS at the load balancer, HSTS, and a production CORS origin
   list.
 - **Rate limiting and abuse protection:** per-user and per-IP limits (at an API gateway
@@ -925,8 +1123,8 @@ These are **not implemented**; they are the natural next steps before real use:
 - **Monitoring and alerting:** metrics (latency, error rates, database pool), tracing
   (OpenTelemetry), a readiness endpoint that checks the database, and error tracking
   such as Sentry on backend and clients.
-- **Audit logging:** an append-only record of security-relevant events (sign-ins,
-  deletes) for investigation.
+- **Audit logging:** an append-only record of security-relevant events (sign-ups,
+  sign-ins, failed logins, logouts, deletes) for investigation.
 - **Secure attachment storage:**
   - files in object storage (e.g. S3) behind short-lived pre-signed URLs, never on the
     API server;
@@ -963,7 +1161,7 @@ area, plus the core-journey walkthrough, is in [docs/FINAL_REVIEW.md](docs/FINAL
 | Optional React web app on the same backend | `apps/web` (React + Vite), same `/api/v1` API |
 | Backend exposing REST endpoints | FastAPI: `GET/POST /api/v1/messages`, `GET/DELETE /api/v1/messages/{id}` ([API](#9-api-endpoints)) |
 | Messages saved in a database | PostgreSQL via SQLAlchemy; schema from Alembic migrations ([Database](#6-database-model)) |
-| Messages belong to a user ID; each user sees only their own | `messages.user_id` FK + owner-scoped queries; identity via `X-User-Id` ([User handling](#7-user-handling)) |
+| Messages belong to a user ID; each user sees only their own | `messages.user_id` FK + owner-scoped queries; identity from the signed-in session ([User handling](#7-user-handling)) |
 | Landing screen lists the current user's messages | Mobile `InboxScreen`, web `InboxPage` |
 | … with a button to create messages | "+ New message" (and "Write your first message" when empty) |
 | … each item shows date (`dd.mm.YYYY`) and subject | `formatDate` / `formatDateTime`; subject as the row title |
@@ -972,7 +1170,7 @@ area, plus the core-journey walkthrough, is in [docs/FINAL_REVIEW.md](docs/FINAL
 | Detail shows subject, date, text + attachment (optional) | `MessageDetailScreen` / `MessageDetailPage`; attachment metadata card |
 | Creation screen with mandatory subject and text | `CreateMessageScreen` / `CreateMessagePage`; client + API + DB validation |
 | Subject max 40 characters | Client counter/validation, Pydantic `max_length=40`, `varchar(40)` + check constraint |
-| Return to the landing screen after creating | `navigation.goBack()` / `navigate('/')` after success; new message shown immediately |
+| Return to the landing screen after creating | `navigation.goBack()` / `navigate('/', { replace: true })` after success; new message shown immediately |
 | Date created automatically in the backend | `created_at` `DEFAULT now()` (timestamptz, UTC); clients cannot send it |
 | Data structure consistent across app, API, DB | [Architecture](#3-architecture): the same shape in the table, ORM, schemas and client types |
 | User handling explained | [User handling](#7-user-handling) |
@@ -995,3 +1193,5 @@ The project was built in reviewed phases, each committed separately:
 8. Final documentation
 9. Final exercise review: requirement checklist, core-journey walkthrough on both
    clients, one navigation fix ([docs/FINAL_REVIEW.md](docs/FINAL_REVIEW.md))
+10. Enhancement: user sign-up, login and logout with secure sessions; every message
+    owned by the signed-in user, enforced on the server; non-destructive migration

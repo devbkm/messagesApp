@@ -11,7 +11,7 @@ from app.api.router import API_V1_PREFIX, api_v1_router
 from app.api.routes import health
 from app.core.config import Settings, get_settings
 from app.core.errors import error_body, register_exception_handlers
-from app.core.identity import USER_ID_HEADER
+from app.core.identity import AUTH_TRANSPORT_HEADER
 
 # Largest accepted request body. A maximal valid message (10,000 characters, even if
 # every one is JSON-escaped) is well below this; anything larger is rejected before
@@ -31,8 +31,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         redoc_url=None,
         openapi_url=None if settings.is_production else "/openapi.json",
         description=(
-            "Inbox API. Every `/api/v1/messages` operation is scoped to the caller "
-            "identified by the `X-User-Id` header. Errors share one envelope: "
+            "Inbox API. Sign up or log in via `/api/v1/auth`; every `/api/v1/messages` "
+            "operation is then scoped to the signed-in user (Bearer token or web session "
+            "cookie). Errors share one envelope: "
             '`{"error": {"code", "message", "details"?}}`.'
         ),
     )
@@ -72,8 +73,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.add_middleware(
             CORSMiddleware,
             allow_origins=settings.cors_origins,
+            # Credentials are needed for the web session cookie.
+            allow_credentials=True,
             allow_methods=["GET", "POST", "DELETE"],
-            allow_headers=["Content-Type", USER_ID_HEADER],
+            allow_headers=["Content-Type", "Authorization", AUTH_TRANSPORT_HEADER],
         )
 
     register_exception_handlers(app)

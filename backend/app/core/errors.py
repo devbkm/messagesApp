@@ -21,16 +21,45 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 logger = logging.getLogger(__name__)
 
 
-class NotFoundError(Exception):
+class AppError(Exception):
+    """An expected failure with a safe, user-facing message and a stable code."""
+
+    status_code = status.HTTP_400_BAD_REQUEST
+    code = "bad_request"
+
+    def __init__(self, message: str, *, code: str | None = None) -> None:
+        super().__init__(message)
+        self.message = message
+        if code is not None:
+            self.code = code
+
+
+class NotFoundError(AppError):
     """Raised by services when a resource does not exist *for the current user*.
 
     The same error is used whether the resource is missing or owned by someone else,
     so responses never reveal that another user's resource exists.
     """
 
+    status_code = status.HTTP_404_NOT_FOUND
+    code = "not_found"
+
     def __init__(self, message: str = "Not found.") -> None:
         super().__init__(message)
-        self.message = message
+
+
+class AuthenticationError(AppError):
+    """Missing, invalid or expired credentials (401)."""
+
+    status_code = status.HTTP_401_UNAUTHORIZED
+    code = "not_authenticated"
+
+
+class ConflictError(AppError):
+    """The request conflicts with existing data, e.g. an email already registered (409)."""
+
+    status_code = status.HTTP_409_CONFLICT
+    code = "conflict"
 
 
 _STATUS_CODES: dict[int, str] = {
@@ -39,6 +68,7 @@ _STATUS_CODES: dict[int, str] = {
     status.HTTP_403_FORBIDDEN: "forbidden",
     status.HTTP_404_NOT_FOUND: "not_found",
     status.HTTP_405_METHOD_NOT_ALLOWED: "method_not_allowed",
+    status.HTTP_409_CONFLICT: "conflict",
     status.HTTP_422_UNPROCESSABLE_CONTENT: "validation_error",
 }
 
@@ -74,9 +104,12 @@ async def _validation_exception_handler(_: Request, exc: RequestValidationError)
     )
 
 
-async def _not_found_handler(_: Request, exc: NotFoundError) -> JSONResponse:
+async def _app_error_handler(_: Request, exc: AppError) -> JSONResponse:
+    headers = (
+        {"WWW-Authenticate": "Bearer"} if exc.status_code == status.HTTP_401_UNAUTHORIZED else None
+    )
     return JSONResponse(
-        status_code=status.HTTP_404_NOT_FOUND, content=error_body("not_found", exc.message)
+        status_code=exc.status_code, content=error_body(exc.code, exc.message), headers=headers
     )
 
 
@@ -109,6 +142,6 @@ async def _unhandled_exception_handler(request: Request, exc: Exception) -> JSON
 def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(StarletteHTTPException, _http_exception_handler)  # type: ignore[arg-type]
     app.add_exception_handler(RequestValidationError, _validation_exception_handler)  # type: ignore[arg-type]
-    app.add_exception_handler(NotFoundError, _not_found_handler)  # type: ignore[arg-type]
+    app.add_exception_handler(AppError, _app_error_handler)  # type: ignore[arg-type]
     app.add_exception_handler(SQLAlchemyError, _database_exception_handler)  # type: ignore[arg-type]
     app.add_exception_handler(Exception, _unhandled_exception_handler)

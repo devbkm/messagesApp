@@ -57,7 +57,8 @@ describe('Inbox states', () => {
 
     await renderApp();
 
-    expect(screen.getByTestId('list-skeleton')).toBeOnTheScreen();
+    // After the session check, the list loads: a skeleton, never a false "empty".
+    expect(await screen.findByTestId('list-skeleton')).toBeOnTheScreen();
     expect(screen.queryByText('Your inbox is empty')).not.toBeOnTheScreen();
 
     request.resolve({ items: [] });

@@ -1,49 +1,51 @@
 """Service layer, input schema and current-user resolution."""
 
-import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from fastapi import HTTPException
 from pydantic import ValidationError
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.errors import AuthenticationError
 from app.core.identity import CurrentUser, get_current_user
-from app.models import Message, User
+from app.models import Message, UserSession
+from app.schemas.auth import SignupRequest
 from app.schemas.message import MessageCreate, MessageRead
+from app.services import auth as auth_service
 from app.services.messages import create_message
-from app.services.users import get_or_create_user
+from tests.support import signup_payload
 
-# --- Users -------------------------------------------------------------------------
+TTL = timedelta(days=1)
 
 
-def test_get_or_create_user_creates_once(db: Session) -> None:
-    user_id = uuid.uuid4()
+def new_account(db: Session) -> auth_service.IssuedSession:
+    return auth_service.signup(db, SignupRequest(**signup_payload()), TTL)
 
-    first = get_or_create_user(db, user_id)
-    second = get_or_create_user(db, user_id)
 
-    assert first.id == second.id == user_id
-    assert db.scalar(select(func.count()).select_from(User).where(User.id == user_id)) == 1
+def as_current_user(issued: auth_service.IssuedSession) -> CurrentUser:
+    user = issued.user
+    assert user.name is not None and user.email is not None
+    return CurrentUser(id=user.id, name=user.name, email=user.email, created_at=user.created_at)
 
 
 # --- Message creation ----------------------------------------------------------------
 
 
 def test_create_message_assigns_owner_and_server_timestamp(db: Session) -> None:
-    owner = CurrentUser(id=get_or_create_user(db, uuid.uuid4()).id)
+    owner = as_current_user(new_account(db))
 
     message = create_message(db, owner, MessageCreate(subject="  Hi  ", text="Body"))
 
     assert message.user_id == owner.id
     assert message.subject == "Hi"
     assert abs(datetime.now(UTC) - message.created_at) < timedelta(minutes=1)
+    assert message.updated_at == message.created_at
     assert db.get(Message, message.id) is not None
 
 
 def test_message_read_does_not_expose_owner(db: Session) -> None:
-    owner = CurrentUser(id=get_or_create_user(db, uuid.uuid4()).id)
+    owner = as_current_user(new_account(db))
     message = create_message(db, owner, MessageCreate(subject="Hi", text="Body"))
 
     payload = MessageRead.from_model(message).model_dump()
@@ -86,18 +88,31 @@ def test_subject_limit_applies_after_trimming() -> None:
 # --- Current user ------------------------------------------------------------------
 
 
-def test_current_user_is_resolved_and_provisioned(db: Session) -> None:
-    user_id = uuid.uuid4()
+def test_current_user_is_resolved_from_a_session_token(db: Session) -> None:
+    issued = new_account(db)
 
-    current = get_current_user(db, str(user_id))
+    current = get_current_user(db, issued.token)
 
-    assert current == CurrentUser(id=user_id)
-    assert db.get(User, user_id) is not None
+    assert current == as_current_user(issued)
 
 
-@pytest.mark.parametrize("header", [None, "", "not-a-uuid"])
-def test_current_user_requires_a_valid_identifier(db: Session, header: str | None) -> None:
-    with pytest.raises(HTTPException) as exc_info:
-        get_current_user(db, header)
+@pytest.mark.parametrize(
+    ("token", "code"),
+    [(None, "not_authenticated"), ("", "not_authenticated"), ("unknown", "invalid_session")],
+)
+def test_current_user_requires_a_valid_session(db: Session, token: str | None, code: str) -> None:
+    with pytest.raises(AuthenticationError) as exc_info:
+        get_current_user(db, token)
 
     assert exc_info.value.status_code == 401
+    assert exc_info.value.code == code
+
+
+def test_session_tokens_are_stored_only_as_hashes(db: Session) -> None:
+    issued = new_account(db)
+
+    stored = db.scalars(select(UserSession).where(UserSession.user_id == issued.user.id)).one()
+
+    assert stored.token_hash != issued.token
+    assert issued.token not in stored.token_hash
+    assert len(stored.token_hash) == 64

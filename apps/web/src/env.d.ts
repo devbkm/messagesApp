@@ -1,5 +1,5 @@
 interface ImportMetaEnv {
-  /** Base URL of the backend API, e.g. http://localhost:8000 */
+  /** API origin, e.g. https://api.example.com. Empty: same origin (dev proxy). */
   readonly VITE_API_URL?: string
 }
 

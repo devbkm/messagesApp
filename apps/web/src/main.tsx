@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client'
 import { RouterProvider } from 'react-router-dom'
 
 import { createQueryClient } from './api/queryClient'
+import { AuthProvider } from './auth/AuthProvider'
 import { createRouter } from './router'
 import './styles/global.css'
 
@@ -16,7 +17,9 @@ const router = createRouter()
 createRoot(root).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
+      <AuthProvider>
+        <RouterProvider router={router} />
+      </AuthProvider>
     </QueryClientProvider>
   </StrictMode>,
 )

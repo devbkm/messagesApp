@@ -91,6 +91,15 @@ export function InlineError({ message }: { message: string }) {
   );
 }
 
+/** Neutral information banner, e.g. "Your session has expired". */
+export function NoticeBanner({ message }: { message: string }) {
+  return (
+    <View style={styles.notice} accessible accessibilityRole="alert" accessibilityLiveRegion="polite">
+      <AppText>{message}</AppText>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   centered: {
     flex: 1,
@@ -106,6 +115,13 @@ const styles = StyleSheet.create({
   },
   center: {
     textAlign: 'center',
+  },
+  notice: {
+    padding: spacing.md,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    backgroundColor: colors.primarySubtle,
   },
   banner: {
     gap: spacing.xxs,

@@ -4,6 +4,14 @@ import { defineConfig } from 'vitest/config'
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
+  server: {
+    // In development the API is served through this origin, so the httpOnly session
+    // cookie is first-party and no CORS is involved. Override the target if the API
+    // runs elsewhere.
+    proxy: {
+      '/api': { target: process.env.API_PROXY_TARGET ?? 'http://127.0.0.1:8000' },
+    },
+  },
   test: {
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],

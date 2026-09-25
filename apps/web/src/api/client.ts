@@ -1,4 +1,3 @@
-import { getUserId } from '../identity/userId'
 import type { ApiErrorBody } from './types'
 
 const REQUEST_TIMEOUT_MS = 15_000
@@ -25,18 +24,31 @@ export class ApiError extends Error {
   }
 }
 
+/** The API origin; empty means the same origin as the page (the dev server proxies /api). */
 export function getApiBaseUrl(): string {
-  const url = import.meta.env.VITE_API_URL
-  if (!url) {
-    throw new ApiError(0, 'not_configured', 'VITE_API_URL is not set.')
-  }
-  return url.replace(/\/+$/, '')
+  return (import.meta.env.VITE_API_URL ?? '').replace(/\/+$/, '')
 }
 
 type RequestOptions = {
   method?: 'GET' | 'POST' | 'DELETE'
   body?: unknown
   signal?: AbortSignal
+  /** Report a 401 to the auth layer, which signs the user out (default true). */
+  reportUnauthorized?: boolean
+}
+
+type UnauthorizedHandler = (error: ApiError) => void
+let unauthorizedHandler: UnauthorizedHandler | null = null
+
+/**
+ * Registers the auth layer's reaction to an expired or revoked session: any request
+ * answered with 401 signs the user out. Returns an unsubscribe.
+ */
+export function setUnauthorizedHandler(handler: UnauthorizedHandler): () => void {
+  unauthorizedHandler = handler
+  return () => {
+    if (unauthorizedHandler === handler) unauthorizedHandler = null
+  }
 }
 
 /** The server answered, but not with the shape the app expects. */
@@ -44,8 +56,17 @@ export function invalidResponse(): ApiError {
   return new ApiError(200, 'invalid_response', 'Unexpected response from the server.')
 }
 
-/** Performs a JSON request as the current user and throws `ApiError` on any failure. */
-export async function apiRequest<T>(path: string, { method = 'GET', body, signal }: RequestOptions = {}): Promise<T> {
+/**
+ * Performs a JSON request and throws `ApiError` on any failure.
+ *
+ * The session lives in an httpOnly cookie that scripts cannot read; the browser sends
+ * it (`credentials: 'include'`), and the `X-Auth-Transport` header tells the API to
+ * accept it. That custom header is also what protects against cross-site requests.
+ */
+export async function apiRequest<T>(
+  path: string,
+  { method = 'GET', body, signal, reportUnauthorized = true }: RequestOptions = {},
+): Promise<T> {
   const controller = new AbortController()
   let timedOut = false
   const timeout = setTimeout(() => {
@@ -59,9 +80,10 @@ export async function apiRequest<T>(path: string, { method = 'GET', body, signal
   try {
     response = await fetch(`${getApiBaseUrl()}${path}`, {
       method,
+      credentials: 'include',
       headers: {
         Accept: 'application/json',
-        'X-User-Id': getUserId(),
+        'X-Auth-Transport': 'cookie',
         ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
       },
       body: body === undefined ? undefined : JSON.stringify(body),
@@ -83,7 +105,9 @@ export async function apiRequest<T>(path: string, { method = 'GET', body, signal
   const payload: unknown = await response.json().catch(() => null)
 
   if (!response.ok) {
-    throw toApiError(response.status, payload)
+    const error = toApiError(response.status, payload)
+    if (response.status === 401 && reportUnauthorized) unauthorizedHandler?.(error)
+    throw error
   }
   return payload as T
 }

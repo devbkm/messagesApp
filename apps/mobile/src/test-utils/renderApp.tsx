@@ -1,8 +1,11 @@
 import { QueryClient } from '@tanstack/react-query';
 import { render } from '@testing-library/react-native';
+import * as SecureStore from 'expo-secure-store';
 
-import type { Message, MessageSummary } from '../api/types';
+import type { AuthApi } from '../api/auth';
+import type { AuthSession, AuthUser, Message, MessageSummary } from '../api/types';
 import { AppProviders } from '../AppProviders';
+import { resetTokenCacheForTests, setToken } from '../auth/tokenStorage';
 import { RootNavigator } from '../navigation/RootNavigator';
 
 const metrics = {
@@ -10,17 +13,58 @@ const metrics = {
   insets: { top: 47, left: 0, right: 0, bottom: 34 },
 };
 
-/** Renders the whole app (navigation included) with a fresh, non-retrying query cache. */
-export async function renderApp() {
+export const TEST_USER: AuthUser = {
+  id: 'user-1',
+  name: 'Ada Lovelace',
+  email: 'ada@example.com',
+  created_at: '2026-09-01T10:00:00Z',
+};
+
+export function session(user: AuthUser = TEST_USER, token = 'session-token'): AuthSession {
+  return { user, token, expires_at: '2026-10-09T10:00:00Z' };
+}
+
+/** A controllable auth API: signed in as TEST_USER unless overridden. */
+export function fakeAuthApi(overrides: Partial<Record<keyof AuthApi, jest.Mock>> = {}) {
+  return {
+    getMe: jest.fn().mockResolvedValue(TEST_USER),
+    login: jest.fn().mockResolvedValue(session()),
+    signup: jest.fn().mockResolvedValue(session()),
+    logout: jest.fn().mockResolvedValue(undefined),
+    ...overrides,
+  };
+}
+
+type RenderAppOptions = {
+  /** Start with a stored session token (default true). */
+  signedIn?: boolean;
+  /** `'real'` uses the real auth API (tests that mock `fetch`). */
+  authApi?: ReturnType<typeof fakeAuthApi> | 'real';
+};
+
+/** Renders the whole app (auth + navigation) with a fresh, non-retrying query cache. */
+export async function renderApp({ signedIn = true, authApi = fakeAuthApi() }: RenderAppOptions = {}) {
+  await resetStoredSession();
+  if (signedIn) await setToken('session-token');
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: Infinity }, mutations: { retry: false } },
   });
   const result = await render(
-    <AppProviders queryClient={queryClient} initialMetrics={metrics}>
+    <AppProviders
+      queryClient={queryClient}
+      initialMetrics={metrics}
+      authApi={authApi === 'real' ? undefined : (authApi as unknown as AuthApi)}
+    >
       <RootNavigator />
     </AppProviders>,
   );
-  return { ...result, queryClient };
+  return { ...result, queryClient, authApi };
+}
+
+/** Clears secure storage and the in-memory token, as on a fresh install. */
+export async function resetStoredSession() {
+  (SecureStore as unknown as { __store: Map<string, string> }).__store.clear();
+  resetTokenCacheForTests();
 }
 
 /** A promise whose settlement the test controls, to observe in-flight states. */

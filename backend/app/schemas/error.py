@@ -28,7 +28,7 @@ class ErrorResponse(BaseModel):
 def error_responses(*status_codes: int) -> dict[int | str, dict[str, Any]]:
     """OpenAPI ``responses`` entries for the given error status codes."""
     descriptions = {
-        401: "Missing or invalid user identification.",
+        401: "Not signed in, or the session is invalid or expired.",
         404: "The message does not exist or does not belong to the current user.",
         422: "The request is invalid (see `details`).",
         503: "The service is temporarily unavailable.",

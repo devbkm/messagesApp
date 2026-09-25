@@ -75,3 +75,12 @@ export function InlineError({ message }: { message: string }) {
     </div>
   )
 }
+
+/** Neutral information banner, e.g. "Your session has expired". */
+export function NoticeBanner({ message }: { message: string }) {
+  return (
+    <div role="status" className={styles.notice}>
+      <p>{message}</p>
+    </div>
+  )
+}

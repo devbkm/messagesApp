@@ -39,3 +39,28 @@ export type ApiErrorBody = {
     details?: { field: string; message: string }[]
   }
 }
+
+export type AuthUser = {
+  id: string
+  name: string
+  email: string
+  created_at: string
+}
+
+/** The web client never receives the token: it is set as an httpOnly cookie. */
+export type AuthSession = {
+  user: AuthUser
+  expires_at: string
+}
+
+export type SignupInput = {
+  name: string
+  email: string
+  password: string
+  password_confirmation: string
+}
+
+export type LoginInput = {
+  email: string
+  password: string
+}

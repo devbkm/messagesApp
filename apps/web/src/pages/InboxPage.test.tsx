@@ -39,7 +39,8 @@ describe('Inbox', () => {
 
     renderApp()
 
-    expect(screen.getByRole('status', { name: 'Loading messages' })).toBeInTheDocument()
+    // After the session check the list loads: a skeleton, never a false "empty".
+    expect(await screen.findByRole('status', { name: 'Loading messages' })).toBeInTheDocument()
     expect(screen.queryByText('Your inbox is empty')).not.toBeInTheDocument()
 
     request.resolve({ items: [] })

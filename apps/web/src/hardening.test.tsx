@@ -178,39 +178,55 @@ describe('content edge cases', () => {
   })
 })
 
-describe('user identity', () => {
-  it('is kept across visits (page reloads)', async () => {
-    window.localStorage.clear()
-    vi.resetModules()
-    const first = (await import('./identity/userId')).getUserId()
-    vi.resetModules()
-    const second = (await import('./identity/userId')).getUserId()
-
-    expect(first).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
-    expect(second).toBe(first)
-  })
-
-  it('still works outside a secure context (no crypto.randomUUID)', async () => {
-    vi.stubGlobal('crypto', { getRandomValues: crypto.getRandomValues.bind(crypto) })
-    const { newUuid } = await import('./identity/userId')
-
-    const ids = new Set(Array.from({ length: 50 }, () => newUuid()))
-
-    expect(ids.size).toBe(50)
-    for (const id of ids) {
-      expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
-    }
-  })
-
-  it('still works when storage is blocked', async () => {
-    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
-      throw new DOMException('Blocked', 'SecurityError')
+describe('authentication through the real API client', () => {
+  it('logs in with the httpOnly cookie and never stores a session secret in the browser', async () => {
+    let signedIn = false
+    serve({
+      'GET /api/v1/auth/me': () =>
+        signedIn
+          ? reply(200, { id: 'u1', name: 'Ada', email: 'ada@example.com', created_at: '2026-09-01T00:00:00Z' })
+          : reply(401, { error: { code: 'not_authenticated', message: 'Please log in to continue.' } }),
+      'POST /api/v1/auth/login': () => {
+        signedIn = true
+        // The real server also sets the cookie; the body has no token in cookie mode.
+        return reply(200, {
+          user: { id: 'u1', name: 'Ada', email: 'ada@example.com', created_at: '2026-09-01T00:00:00Z' },
+          expires_at: '2026-10-09T00:00:00Z',
+        })
+      },
+      'GET /api/v1/messages': () => reply(200, { items: [summary('m1', 'Only mine')] }),
     })
-    vi.resetModules()
-    const { getUserId } = await import('./identity/userId')
+    const { user } = renderApp('/', { authApi: 'real' })
 
-    expect(getUserId()).toMatch(/^[0-9a-f-]{36}$/)
-    vi.restoreAllMocks()
+    await user.type(await screen.findByRole('textbox', { name: 'Email' }), 'ada@example.com')
+    await user.type(screen.getByLabelText('Password'), 'correct horse')
+    await user.click(screen.getByRole('button', { name: 'Log in' }))
+
+    expect(await screen.findByRole('link', { name: /Only mine/ })).toBeInTheDocument()
+    for (const [, init] of fetchMock.mock.calls) {
+      expect(init.credentials).toBe('include')
+      expect(init.headers['X-Auth-Transport']).toBe('cookie')
+      expect(init.headers.Authorization).toBeUndefined()
+    }
+    expect(window.localStorage.length).toBe(0)
+    expect(window.sessionStorage.length).toBe(0)
+  })
+
+  it('returns to Log in with an explanation when the session expires mid-use', async () => {
+    serve({
+      'GET /api/v1/auth/me': () =>
+        reply(200, { id: 'u1', name: 'Ada', email: 'ada@example.com', created_at: '2026-09-01T00:00:00Z' }),
+      'GET /api/v1/messages': () =>
+        reply(401, { error: { code: 'session_expired', message: 'Your session has expired. Please log in again.' } }),
+    })
+    const { router } = renderApp('/messages/new', { authApi: 'real' })
+    await screen.findByRole('heading', { level: 1, name: 'New message' })
+
+    await router.navigate('/')
+
+    expect(await screen.findByText('Your session has expired. Please log in again.')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1, name: 'Log in' })).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe('/login')
   })
 })
 
