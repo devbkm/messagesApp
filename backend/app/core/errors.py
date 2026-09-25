@@ -15,9 +15,23 @@ from fastapi import FastAPI, Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import InterfaceError, OperationalError, SQLAlchemyError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 logger = logging.getLogger(__name__)
+
+
+class NotFoundError(Exception):
+    """Raised by services when a resource does not exist *for the current user*.
+
+    The same error is used whether the resource is missing or owned by someone else,
+    so responses never reveal that another user's resource exists.
+    """
+
+    def __init__(self, message: str = "Not found.") -> None:
+        super().__init__(message)
+        self.message = message
+
 
 _STATUS_CODES: dict[int, str] = {
     status.HTTP_400_BAD_REQUEST: "bad_request",
@@ -60,6 +74,30 @@ async def _validation_exception_handler(_: Request, exc: RequestValidationError)
     )
 
 
+async def _not_found_handler(_: Request, exc: NotFoundError) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_404_NOT_FOUND, content=error_body("not_found", exc.message)
+    )
+
+
+async def _database_exception_handler(request: Request, exc: SQLAlchemyError) -> JSONResponse:
+    # SQL, parameters and driver messages are logged, never returned.
+    logger.exception("Database error on %s %s", request.method, request.url.path, exc_info=exc)
+    # OperationalError / InterfaceError: the database is unreachable or dropped the
+    # connection, which is transient from the client's point of view.
+    if isinstance(exc, OperationalError | InterfaceError):
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content=error_body(
+                "service_unavailable", "The service is temporarily unavailable. Please try again."
+            ),
+        )
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content=error_body("internal_error", "Something went wrong. Please try again."),
+    )
+
+
 async def _unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     logger.exception("Unhandled error on %s %s", request.method, request.url.path, exc_info=exc)
     return JSONResponse(
@@ -71,4 +109,6 @@ async def _unhandled_exception_handler(request: Request, exc: Exception) -> JSON
 def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(StarletteHTTPException, _http_exception_handler)  # type: ignore[arg-type]
     app.add_exception_handler(RequestValidationError, _validation_exception_handler)  # type: ignore[arg-type]
+    app.add_exception_handler(NotFoundError, _not_found_handler)  # type: ignore[arg-type]
+    app.add_exception_handler(SQLAlchemyError, _database_exception_handler)  # type: ignore[arg-type]
     app.add_exception_handler(Exception, _unhandled_exception_handler)

@@ -14,13 +14,22 @@ import uuid
 from dataclasses import dataclass
 from typing import Annotated
 
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Depends, HTTPException, Security, status
+from fastapi.security import APIKeyHeader
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.services import users as user_service
 
 USER_ID_HEADER = "X-User-Id"
+
+# Declared as a security scheme so OpenAPI documents it and Swagger UI can send it.
+user_id_scheme = APIKeyHeader(
+    name=USER_ID_HEADER,
+    scheme_name="UserId",
+    description="Development-only user identification: the caller's user id (UUID).",
+    auto_error=False,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,9 +41,9 @@ class CurrentUser:
 
 def get_current_user(
     db: Annotated[Session, Depends(get_db)],
-    x_user_id: Annotated[str | None, Header(alias=USER_ID_HEADER)] = None,
+    x_user_id: Annotated[str | None, Security(user_id_scheme)] = None,
 ) -> CurrentUser:
-    if x_user_id is None:
+    if not x_user_id:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Missing user identification.")
     try:
         user_id = uuid.UUID(x_user_id)

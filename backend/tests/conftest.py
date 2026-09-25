@@ -15,6 +15,7 @@ from pathlib import Path
 import pytest
 from alembic import command
 from alembic.config import Config
+from fastapi.testclient import TestClient
 from sqlalchemy import Engine, make_url, text
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
@@ -28,7 +29,8 @@ TEST_DATABASE_URL = os.environ.get(
 os.environ["DATABASE_URL"] = TEST_DATABASE_URL
 os.environ.setdefault("ENVIRONMENT", "test")
 
-from app.db.session import create_engine_for  # noqa: E402  (needs the env vars above)
+from app.db.session import create_engine_for, get_db  # noqa: E402  (needs the env vars above)
+from app.main import create_app  # noqa: E402
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 
@@ -91,3 +93,12 @@ def db(db_engine: Engine) -> Iterator[Session]:
         session.close()
         transaction.rollback()
         connection.close()
+
+
+@pytest.fixture
+def client(db: Session) -> Iterator[TestClient]:
+    """API client whose requests share the rolled-back test session."""
+    app = create_app()
+    app.dependency_overrides[get_db] = lambda: db
+    with TestClient(app) as test_client:
+        yield test_client

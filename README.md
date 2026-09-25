@@ -13,10 +13,9 @@ It is built as a practical exercise and consists of:
 Both clients talk to the same versioned REST API (`/api/v1/...`). The backend is the
 single source of truth for ownership, validation, creation dates and deletion.
 
-> **Project status:** Phase 2 — database. The project structure, design system,
-> navigation, `/health`, and the database layer (models, migrations, integrity rules,
-> current-user seam) are in place. The message API endpoints and the client screens
-> are added in later phases (see [Roadmap](#roadmap)).
+> **Project status:** Phase 3 — REST API. The project structure, design system,
+> navigation, the database layer and the complete messages REST API are in place. The
+> client screens are connected to the API in later phases (see [Roadmap](#roadmap)).
 
 ---
 
@@ -265,6 +264,123 @@ Messages belong to a user, and the backend alone decides who that is:
 
 ---
 
+## REST API
+
+Base path: `/api/v1`. JSON in and out. The machine-readable contract is served at
+`/openapi.json`, with interactive docs at `/docs` (both disabled when
+`ENVIRONMENT=production`). In Swagger UI, use **Authorize** to set `X-User-Id`.
+
+| Method | Path | Success | Errors |
+| --- | --- | --- | --- |
+| `GET` | `/api/v1/messages` | `200` list of the caller's messages, newest first | `401`, `503` |
+| `GET` | `/api/v1/messages/{id}` | `200` the full message | `401`, `404`, `422`, `503` |
+| `POST` | `/api/v1/messages` | `201` the created message + `Location` header | `401`, `422`, `503` |
+| `DELETE` | `/api/v1/messages/{id}` | `204` no body | `401`, `404`, `422`, `503` |
+| `GET` | `/health` | `200` `{"status": "ok"}` (no identity needed) | — |
+
+Every `/api/v1/messages` request must include the header
+`X-User-Id: <uuid>` (see [User handling](#user-handling)).
+
+### Request and response bodies
+
+**Create** — `POST /api/v1/messages`
+
+```json
+{ "subject": "Example", "text": "Message content" }
+```
+
+**Message** — returned by `POST` and `GET /{id}`
+
+```json
+{
+  "id": "687abbcc-15a4-4043-8443-2b60f6b4974e",
+  "subject": "Example",
+  "text": "Message content",
+  "created_at": "2026-09-25T07:28:54.980508Z",
+  "attachment": null
+}
+```
+
+`attachment`, when present, is `{"filename", "content_type", "size_bytes"}`.
+
+**List** — `GET /api/v1/messages`
+
+```json
+{
+  "items": [
+    {
+      "id": "687abbcc-15a4-4043-8443-2b60f6b4974e",
+      "subject": "Example",
+      "created_at": "2026-09-25T07:28:54.980508Z",
+      "has_attachment": false
+    }
+  ]
+}
+```
+
+The list carries only what the inbox shows (subject, date). The full text comes from
+`GET /{id}`. `created_at` is always UTC in ISO 8601; clients format it for display
+(e.g. `dd.mm.YYYY`). The list is wrapped in `items` so pagination fields can be added
+later without a breaking change.
+
+### Validation rules
+
+| Field | Rule |
+| --- | --- |
+| `subject` | Required string; 1–40 characters after trimming surrounding whitespace |
+| `text` | Required string; 1–10,000 characters after trimming surrounding whitespace |
+| any other field | Rejected with `422`, including `id`, `user_id` and `created_at` |
+| `{id}` path parameter | Must be a UUID, otherwise `422` |
+| `X-User-Id` header | Required UUID, otherwise `401` |
+
+The 10,000-character limit on `text` is an assumption; the brief sets no maximum. It
+protects the API from oversized payloads. Validation runs on the server even though the
+clients also validate, and the database enforces the same rules again (see
+[Data model](#data-model)).
+
+### Errors
+
+All errors share one envelope:
+
+```json
+{
+  "error": {
+    "code": "validation_error",
+    "message": "The request is invalid.",
+    "details": [
+      { "field": "body.subject", "message": "String should have at most 40 characters" }
+    ]
+  }
+}
+```
+
+| Status | `code` | When |
+| --- | --- | --- |
+| `401` | `unauthorized` | `X-User-Id` missing or not a UUID |
+| `404` | `not_found` | The message does not exist **or belongs to another user**. Both cases return the same response, so nothing reveals that another user's message exists. |
+| `405` | `method_not_allowed` | Unsupported HTTP method |
+| `422` | `validation_error` | Invalid body, malformed JSON, unknown fields, or an invalid id. `details` lists each problem by field. |
+| `500` | `internal_error` | Unexpected error. Details are logged on the server only. |
+| `503` | `service_unavailable` | The database is unreachable; the client may retry. |
+
+Responses never include stack traces, SQL, driver messages or submitted values. API
+responses are sent with `Cache-Control: no-store` (they hold private data) and
+`X-Content-Type-Options: nosniff`.
+
+### Design decisions
+
+- **Scoping:** every service query filters on both the message id *and* the current user,
+  so another user's message is indistinguishable from a missing one.
+- **Unknown fields are rejected, not ignored:** a client that sends `user_id` or
+  `created_at` gets a clear `422` instead of the value being silently dropped.
+- **Invalid ids return `422`,** matching the `uuid` format in the OpenAPI contract, rather
+  than `404`.
+- **No pagination yet:** an inbox in this exercise stays small. The `items` wrapper and
+  the `(user_id, created_at DESC)` index let cursor pagination be added without breaking
+  clients.
+
+---
+
 ## Design system
 
 Both clients implement the same small set of building blocks:
@@ -311,7 +427,7 @@ Guidelines:
 
 1. **Foundation** — project structure, design system, navigation, `/health` ✅
 2. **Database** — models, migrations, integrity rules, current-user seam ✅
-3. Messages REST API with validation, user scoping and tests
+3. **REST API** — messages endpoints, user scoping, validation, errors, OpenAPI ✅
 4. Mobile: API client and data fetching
 5. Mobile: inbox, detail and create screens
 6. Web: the same features on the shared API
