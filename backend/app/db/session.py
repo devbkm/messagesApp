@@ -15,7 +15,17 @@ from app.core.config import get_settings
 
 @lru_cache
 def get_engine() -> Engine:
-    return create_engine(str(get_settings().database_url), pool_pre_ping=True)
+    return create_engine_for(str(get_settings().database_url))
+
+
+def create_engine_for(url: str) -> Engine:
+    # Pin the session time zone so timestamps are always returned in UTC,
+    # regardless of the database server's configuration.
+    return create_engine(
+        url,
+        pool_pre_ping=True,
+        connect_args={"options": "-c timezone=UTC", "connect_timeout": 10},
+    )
 
 
 @lru_cache
