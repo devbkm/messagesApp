@@ -5,11 +5,13 @@ import { CreateMessagePage } from './pages/CreateMessagePage'
 import { InboxPage } from './pages/InboxPage'
 import { MessageDetailPage } from './pages/MessageDetailPage'
 import { NotFoundPage } from './pages/NotFoundPage'
+import { RouteErrorPage } from './pages/RouteErrorPage'
 
 /** Routes mirror the mobile stack: Inbox → Message detail, Inbox → Create message. */
 export const routes: RouteObject[] = [
   {
     element: <AppLayout />,
+    errorElement: <RouteErrorPage />,
     children: [
       { index: true, element: <InboxPage /> },
       { path: 'messages/new', element: <CreateMessagePage /> },

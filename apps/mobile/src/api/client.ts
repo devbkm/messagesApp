@@ -36,10 +36,19 @@ type RequestOptions = {
   body?: unknown;
 };
 
+/** The server answered, but not with the shape the app expects. */
+export function invalidResponse(): ApiError {
+  return new ApiError(200, 'invalid_response', 'Unexpected response from the server.');
+}
+
 /** Performs a JSON request as the current user and throws `ApiError` on any failure. */
 export async function apiRequest<T>(path: string, { method = 'GET', body }: RequestOptions = {}): Promise<T> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  let timedOut = false;
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, REQUEST_TIMEOUT_MS);
 
   let response: Response;
   try {
@@ -56,6 +65,7 @@ export async function apiRequest<T>(path: string, { method = 'GET', body }: Requ
     });
   } catch (error) {
     if (error instanceof ApiError) throw error;
+    if (timedOut) throw new ApiError(0, 'timeout', 'The server took too long to respond.');
     throw new ApiError(0, 'network_error', 'Could not reach the server.');
   } finally {
     clearTimeout(timeout);

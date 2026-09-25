@@ -1,0 +1,12 @@
+.main {
+  max-width: var(--content-max-width);
+  margin: 0 auto;
+  padding: var(--space-xxl) var(--space-lg);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-md);
+}

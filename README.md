@@ -13,9 +13,9 @@ It is built as a practical exercise and consists of:
 Both clients talk to the same versioned REST API (`/api/v1/...`). The backend is the
 single source of truth for ownership, validation, creation dates and deletion.
 
-> **Project status:** Phase 5 — web client. The backend (database + REST API), the React
-> Native app and the optional React web app are complete and use the same API (see
-> [Roadmap](#roadmap)).
+> **Project status:** Phase 6 — hardening. The backend, the React Native app and the
+> optional React web app are complete, and they have been through a dedicated security,
+> reliability and edge-case review (see [Security and reliability](#security-and-reliability)).
 
 ---
 
@@ -347,14 +347,16 @@ later without a breaking change.
 
 | Field | Rule |
 | --- | --- |
-| `subject` | Required string; 1–40 characters after trimming surrounding whitespace |
-| `text` | Required string; 1–10,000 characters after trimming surrounding whitespace |
+| `subject` | Required string; 1–40 characters after trimming surrounding whitespace; a single line with at least one visible character (no control or zero-width-only content) |
+| `text` | Required string; 1–10,000 characters after trimming surrounding whitespace; line breaks and tabs are kept, other control characters (e.g. NUL) are rejected |
+| request body | At most 256 KiB, with a `Content-Length` header (`413` / `411` otherwise) |
 | any other field | Rejected with `422`, including `id`, `user_id` and `created_at` |
 | `{id}` path parameter | Must be a UUID, otherwise `422` |
 | `X-User-Id` header | Required UUID, otherwise `401` |
 
 The 10,000-character limit on `text` is an assumption; the brief sets no maximum. It
-protects the API from oversized payloads. Validation runs on the server even though the
+protects the API from oversized payloads. Lengths count Unicode characters (code
+points): 40 emoji make a valid subject. Both clients count the same way. Validation runs on the server even though the
 clients also validate, and the database enforces the same rules again (see
 [Data model](#data-model)).
 
@@ -379,6 +381,8 @@ All errors share one envelope:
 | `401` | `unauthorized` | `X-User-Id` missing or not a UUID |
 | `404` | `not_found` | The message does not exist **or belongs to another user**. Both cases return the same response, so nothing reveals that another user's message exists. |
 | `405` | `method_not_allowed` | Unsupported HTTP method |
+| `411` | `length_required` | A body was sent without `Content-Length` (e.g. chunked upload) |
+| `413` | `payload_too_large` | The body is larger than 256 KiB |
 | `422` | `validation_error` | Invalid body, malformed JSON, unknown fields, or an invalid id. `details` lists each problem by field. |
 | `500` | `internal_error` | Unexpected error. Details are logged on the server only. |
 | `503` | `service_unavailable` | The database is unreachable; the client may retry. |
@@ -398,6 +402,79 @@ responses are sent with `Cache-Control: no-store` (they hold private data) and
 - **No pagination yet:** an inbox in this exercise stays small. The `items` wrapper and
   the `(user_id, created_at DESC)` index let cursor pagination be added without breaking
   clients.
+
+---
+
+## Security and reliability
+
+A dedicated review (phase 6) checked the items below. Each one is covered by an
+automated test unless marked as manual.
+
+### API security
+
+| Check | How it is ensured |
+| --- | --- |
+| User isolation | Every query filters on message id **and** owner; other users' messages return the same `404` as missing ones. Covered for read, delete and list. |
+| Ownership cannot be supplied | `MessageCreate` accepts only `subject` and `text`; `user_id`, `id` and `created_at` are rejected with `422` and nothing is stored. |
+| IDs cannot bypass authorization | UUIDs are not guessable, and knowing one grants nothing: authorization never depends on the id alone. |
+| Safe database access | All SQL goes through the SQLAlchemy ORM with bound parameters. The only raw SQL fragments are constant DDL (defaults, check constraints). |
+| Unstorable input | NUL and other control characters are rejected at validation (`422`); before this review a NUL caused a `500` from PostgreSQL. |
+| Oversized requests | Bodies over 256 KiB get `413`, and bodies without `Content-Length` get `411`, before anything is parsed. |
+| No leaked internals | Stack traces, SQL, driver messages and submitted values never appear in responses. Unexpected errors are logged on the server and answered with a generic `500` / `503`. |
+| Server-side validation | Enforced by Pydantic, then again by database constraints, regardless of client checks. |
+| CORS | Only origins listed in `CORS_ORIGINS` get CORS headers; others are refused. |
+| Production settings | `DATABASE_URL` has no default; `/docs` and `/openapi.json` are disabled when `ENVIRONMENT=production`. |
+
+### Secrets and configuration
+
+- No secrets are committed. `.env` files are git-ignored; only `.env.example` files with
+  placeholders are tracked. The one credential in the repository is the documented,
+  development-only database password in `docker-compose.yml`, and the database port is
+  bound to `127.0.0.1` only.
+- Database credentials exist only in the backend's environment. The clients receive a
+  single public value, the API base URL (`EXPO_PUBLIC_API_URL` / `VITE_API_URL`). The
+  production web bundle and the compiled Android bundle were scanned and contain no
+  database URL, password or backend setting (manual check).
+- The clients do not log anything (`console.*` is not used) and never render HTML from
+  data: React escapes all text, so a subject like `<img onerror=…>` is shown literally
+  (tested).
+
+### Reliability
+
+| Scenario | Behaviour |
+| --- | --- |
+| API unavailable | Clear "Can't reach the server" error with **Try again**; queries retry once automatically first. |
+| Slow API | Skeletons and busy buttons are shown immediately. After 15 s the request is aborted with "The server is taking too long to respond". |
+| Invalid / malformed response | Every response is checked before use. A non-JSON body, wrong shape or bad date becomes a normal, recoverable error, not a crash. |
+| Unexpected render error | A last-resort boundary (mobile) or route error page (web) shows a friendly screen with a way to recover. |
+| Empty database | A friendly empty state with a call to action, never a blank screen. |
+| Duplicate submission | Create and delete ignore repeated taps, clicks and Enter while a request is running. |
+| Repeated delete / deleted elsewhere | A `404` on delete counts as success: the row disappears without an error. Opening a message that was deleted elsewhere shows "not found" and removes the stale row from the inbox. |
+| Network failure during create / delete | Create keeps the form content and allows retry. Delete keeps the message and offers **Try again**. |
+| Reopening the app | The per-device user id is persisted (AsyncStorage / localStorage), so the same inbox is shown. On the web, a random id is still generated where `crypto.randomUUID` is unavailable (plain-`http` LAN address) or storage is blocked. |
+| Many messages | 150 messages are listed newest first (API). The mobile list is virtualised (300 messages tested); the web list renders 500 without issue. |
+
+### Edge cases
+
+| Case | Result |
+| --- | --- |
+| Exactly 40 characters, including 40 emoji, accented or CJK characters | Accepted everywhere; the counter shows `40/40`. |
+| More than 40 characters | Rejected by the clients while typing and by the API (`422`). |
+| Very long message (10,000 characters, including emoji) | Accepted; the detail views scroll and wrap long words. |
+| Multiline text with tabs | Stored and shown exactly as written. |
+| Unicode, right-to-left text, special characters, markup | Round-trips unchanged and is displayed as plain text. |
+| Invisible-only or multi-line subject | Rejected with a clear message, in the clients and the API. |
+| Keyboard opening, small phone screens | Handled by keyboard-avoiding layouts with the submit button pinned above the keyboard, and 320 px web layouts. Verified manually in a phone-sized browser; still to be checked on a physical device. |
+
+### Known limitations
+
+- **No authentication.** `X-User-Id` identifies but does not authenticate (see
+  [User handling](#user-handling)).
+- **Retrying after a lost create response can duplicate a message.** If a create
+  succeeds on the server but the response is lost (e.g. timeout), retrying creates a
+  second copy. Idempotency keys would prevent this but are beyond the exercise's scope.
+- **No rate limiting.** It would normally sit in a reverse proxy or API gateway in
+  front of the service.
 
 ---
 
@@ -445,7 +522,7 @@ Errors start with "Error:", so they do not rely on colour. The loading skeleton 
 single announced progress element. Outcomes ("Message created", "Message deleted") are
 announced to screen readers. All controls are at least 48 dp.
 
-**Tests** (`npm test`, 36 tests) render the whole app with the API module mocked and
+**Tests** (`npm test`, 51 tests) render the whole app with either the API module or `fetch` mocked, and
 cover:
 - inbox rendering, accessible names and long subjects;
 - loading, empty and error states, including retry;
@@ -513,8 +590,8 @@ page.
   `aria-describedby`, and invalid fields set `aria-invalid`.
 - Errors begin with a visible "Error:", and success is announced through a status region.
 
-**Tests** (`npm test`, Vitest + Testing Library, 33 tests) render the real routes with
-the API module mocked. They cover:
+**Tests** (`npm test`, Vitest + Testing Library, 50 tests) render the real routes with
+either the API module or `fetch` mocked. They cover:
 - the inbox, its loading, empty and error states, and retry;
 - keyboard order and the skip link;
 - delete: confirmation, cancel, busy state, a single request, success with focus
@@ -575,4 +652,5 @@ Guidelines:
 3. **REST API** — messages endpoints, user scoping, validation, errors, OpenAPI ✅
 4. **Mobile app** — inbox, detail and create screens on the real API, with tests ✅
 5. **Web client** — the same features on the shared API, responsive and keyboard accessible ✅
-6. Final documentation: decisions and trade-offs
+6. **Hardening** — security, reliability and edge-case review, with fixes and tests ✅
+7. Final documentation: decisions and trade-offs

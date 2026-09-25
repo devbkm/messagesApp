@@ -3,6 +3,9 @@ import { ApiError } from '../api/client';
 /** Turns any thrown value into a short, user-facing sentence. Never exposes internals. */
 export function describeError(error: unknown): string {
   if (error instanceof ApiError) {
+    if (error.code === 'timeout') {
+      return 'The server is taking too long to respond. Please try again.';
+    }
     if (error.isNetworkError) {
       return "Can't reach the server. Check your connection and try again.";
     }

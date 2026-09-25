@@ -1,8 +1,9 @@
+import unicodedata
 import uuid
 from datetime import datetime
 from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StringConstraints
 
 from app.models.message import SUBJECT_MAX_LENGTH, Message
 
@@ -10,12 +11,46 @@ from app.models.message import SUBJECT_MAX_LENGTH, Message
 # unreasonably large payloads.
 TEXT_MAX_LENGTH = 10_000
 
+# Control characters are never meaningful in a message. NUL in particular cannot be
+# stored by PostgreSQL, so it must be rejected here rather than fail in the database.
+# The message text may still contain line breaks and tabs.
+_TEXT_ALLOWED_CONTROLS = frozenset("\n\r\t")
+
+
+def _is_control(char: str) -> bool:
+    return ord(char) < 0x20 or 0x7F <= ord(char) <= 0x9F
+
+
+def _has_visible_character(value: str) -> bool:
+    # Whitespace and invisible "format" characters (e.g. zero-width space) alone would
+    # render as a blank subject or message.
+    return any(not char.isspace() and unicodedata.category(char) != "Cf" for char in value)
+
+
+def _valid_subject(value: str) -> str:
+    if any(_is_control(char) for char in value):
+        raise ValueError("Subject must be a single line without control characters")
+    if not _has_visible_character(value):
+        raise ValueError("Subject must contain visible characters")
+    return value
+
+
+def _valid_text(value: str) -> str:
+    if any(_is_control(char) and char not in _TEXT_ALLOWED_CONTROLS for char in value):
+        raise ValueError("Text must not contain control characters")
+    if not _has_visible_character(value):
+        raise ValueError("Text must contain visible characters")
+    return value
+
+
 Subject = Annotated[
     str,
     StringConstraints(strip_whitespace=True, min_length=1, max_length=SUBJECT_MAX_LENGTH),
+    AfterValidator(_valid_subject),
     Field(
         description=(
-            f"Required. 1-{SUBJECT_MAX_LENGTH} characters after trimming surrounding whitespace."
+            f"Required. 1-{SUBJECT_MAX_LENGTH} characters after trimming surrounding whitespace; "
+            "a single line without control characters."
         ),
         examples=["Example"],
     ),
@@ -23,9 +58,11 @@ Subject = Annotated[
 Body = Annotated[
     str,
     StringConstraints(strip_whitespace=True, min_length=1, max_length=TEXT_MAX_LENGTH),
+    AfterValidator(_valid_text),
     Field(
         description=(
-            f"Required. 1-{TEXT_MAX_LENGTH:,} characters after trimming surrounding whitespace."
+            f"Required. 1-{TEXT_MAX_LENGTH:,} characters after trimming surrounding whitespace; "
+            "line breaks and tabs are kept, other control characters are rejected."
         ),
         examples=["Message content"],
     ),

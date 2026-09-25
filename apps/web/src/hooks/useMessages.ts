@@ -1,7 +1,8 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 
 import { createMessage, deleteMessage, getMessage, listMessages } from '../api/messages'
 import type { Message, MessageCreate, MessageList } from '../api/types'
+import { isNotFound } from '../utils/errors'
 
 export const messageKeys = {
   all: ['messages'] as const,
@@ -13,8 +14,27 @@ export function useMessageList() {
   return useQuery({ queryKey: messageKeys.list(), queryFn: ({ signal }) => listMessages(signal) })
 }
 
+/** Drops a message from the cached inbox list, e.g. when it turns out to be gone. */
+function removeFromList(queryClient: QueryClient, id: string) {
+  queryClient.setQueryData<MessageList>(messageKeys.list(), (current) =>
+    current ? { items: current.items.filter((item) => item.id !== id) } : current,
+  )
+}
+
 export function useMessage(id: string) {
-  return useQuery({ queryKey: messageKeys.detail(id), queryFn: ({ signal }) => getMessage(id, signal) })
+  const queryClient = useQueryClient()
+  return useQuery({
+    queryKey: messageKeys.detail(id),
+    queryFn: async ({ signal }) => {
+      try {
+        return await getMessage(id, signal)
+      } catch (error) {
+        // Deleted elsewhere (another tab or device): keep the inbox from showing a ghost row.
+        if (isNotFound(error)) removeFromList(queryClient, id)
+        throw error
+      }
+    },
+  })
 }
 
 export function useCreateMessage() {
@@ -47,11 +67,16 @@ export function useCreateMessage() {
 export function useDeleteMessage() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (id: string) => deleteMessage(id),
+    mutationFn: async (id: string) => {
+      try {
+        await deleteMessage(id)
+      } catch (error) {
+        // Already deleted (e.g. in another tab): the user's intent is fulfilled.
+        if (!isNotFound(error)) throw error
+      }
+    },
     onSuccess: (_result, id) => {
-      queryClient.setQueryData<MessageList>(messageKeys.list(), (current) =>
-        current ? { items: current.items.filter((item) => item.id !== id) } : current,
-      )
+      removeFromList(queryClient, id)
       queryClient.removeQueries({ queryKey: messageKeys.detail(id) })
       return queryClient.invalidateQueries({ queryKey: messageKeys.list() })
     },

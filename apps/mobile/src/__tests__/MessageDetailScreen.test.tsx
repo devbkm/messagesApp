@@ -74,7 +74,8 @@ describe('Message detail', () => {
 
     expect(await screen.findByText('Message not found')).toBeOnTheScreen();
     await fireEvent.press(screen.getByRole('button', { name: 'Back to inbox' }));
-    expect(await screen.findByRole('button', { name: 'New message' })).toBeOnTheScreen();
+    // The missing message is also dropped from the inbox, which is now empty.
+    expect(await screen.findByText('Your inbox is empty')).toBeOnTheScreen();
   });
 
   it('offers retry after a failure', async () => {
